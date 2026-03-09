@@ -102,6 +102,16 @@ def show_study_plan():
         </div>
         """, unsafe_allow_html=True)
 
+        # Link to the chapter mentioned in this day's focus
+        import re as _re
+        chapter_match = _re.search(r'chapter\s*(\d+)', focus, _re.IGNORECASE)
+        if chapter_match:
+            ch_num = int(chapter_match.group(1))
+            if st.button(f"📖 Go to Chapter {ch_num}", key=f"goto_ch_{i}"):
+                st.session_state.page = "lesson"
+                st.session_state.current_chapter = ch_num
+                st.rerun()
+
     # Summary stats
     st.markdown("<br>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)

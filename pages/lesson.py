@@ -146,6 +146,25 @@ def show_lesson():
         </div>
         """, unsafe_allow_html=True)
 
+        # Top nav buttons — no more scrolling to bottom
+        top_prev, top_mid, top_next = st.columns([1, 2, 1])
+        with top_prev:
+            if st.session_state.current_chapter > 1:
+                if st.button("← Prev", key="top_prev_btn"):
+                    st.session_state.current_chapter -= 1
+                    st.rerun()
+        with top_mid:
+            st.markdown(f'<div style="text-align:center; color:#4a5568; font-size:0.85rem; padding-top:0.5rem;">{st.session_state.current_chapter} / {total_chapters}</div>', unsafe_allow_html=True)
+        with top_next:
+            if st.session_state.current_chapter < total_chapters:
+                if st.button("Next →", key="top_next_btn"):
+                    if "completed_chapters" not in st.session_state:
+                        st.session_state.completed_chapters = set()
+                    st.session_state.completed_chapters.add(chapter_idx)
+                    st.session_state.current_chapter += 1
+                    st.rerun()
+        st.markdown("---")
+
         # Generate content
         cache_key = f"chapter_content_{chapter_idx}"
         if cache_key not in st.session_state:
@@ -223,14 +242,26 @@ def show_lesson():
                 parts = line.split(":", 1)
                 step_label = parts[0].strip()
                 step_content = parts[1].strip() if len(parts) > 1 else ""
-                example_html += f"""
-                <div style="display:flex; gap:1rem; margin-bottom:1rem; padding:1rem;
-                            background:rgba(255,255,255,0.02); border-radius:10px;
-                            border-left:3px solid #7b61ff;">
-                    <div style="color:#7b61ff; font-weight:700; font-size:0.85rem;
-                                min-width:70px; padding-top:0.1rem;">{step_label}</div>
-                    <div style="color:#c9d3e0; line-height:1.8; font-size:0.95rem;">{step_content}</div>
-                </div>"""
+                is_code = any(p in step_content for p in [
+                    "()", "[]", "{}", "import ", "def ", "class ",
+                    "$ ", "npm ", "pip ", "git ", "docker ", "->", "=>"
+                ])
+                if is_code:
+                    # Flush any buffered html first
+                    if example_html:
+                        st.markdown(f'<div class="card">{example_html}</div>', unsafe_allow_html=True)
+                        example_html = ""
+                    st.markdown(f'<div style="color:#7b61ff; font-weight:700; font-size:0.85rem; margin-bottom:0.3rem;">{step_label}</div>', unsafe_allow_html=True)
+                    st.code(step_content)
+                else:
+                    example_html += f"""
+                    <div style="display:flex; gap:1rem; margin-bottom:1rem; padding:1rem;
+                                background:rgba(255,255,255,0.02); border-radius:10px;
+                                border-left:3px solid #7b61ff;">
+                        <div style="color:#7b61ff; font-weight:700; font-size:0.85rem;
+                                    min-width:70px; padding-top:0.1rem;">{step_label}</div>
+                        <div style="color:#c9d3e0; line-height:1.8; font-size:0.95rem;">{step_content}</div>
+                    </div>"""
             else:
                 example_html += f'<p style="color:#c9d3e0; line-height:1.8; margin-bottom:0.5rem;">{line}</p>'
         st.markdown(f'<div class="card">{example_html}</div>', unsafe_allow_html=True)
@@ -238,7 +269,7 @@ def show_lesson():
         # 5. Visual Diagram
         st.markdown('<span class="section-label label-visual">🎨 Visual Diagram</span>', unsafe_allow_html=True)
         visual = content.get("visual", "")
-        st.markdown(f'<div class="visual-box" style="font-size:0.95rem; line-height:1.9; white-space:pre;">{visual}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x:auto; background:#0a0a1e; padding:1rem; border-radius:10px; font-family:monospace; font-size:0.85rem; line-height:1.7; white-space:pre;">{visual}</div>', unsafe_allow_html=True)
 
         # 6. Common Mistakes
         common_mistakes = content.get("common_mistakes", "")

@@ -92,6 +92,14 @@ def show_quiz():
                         score += 1
                 st.session_state.quiz_score = score
                 st.session_state.quiz_submitted = True
+                if "quiz_history" not in st.session_state:
+                    st.session_state.quiz_history = []
+                st.session_state.quiz_history.append({
+                    "topic": topic,
+                    "score": score,
+                    "total": len(questions),
+                    "pct": int((score / len(questions)) * 100)
+                })
                 st.rerun()
     else:
         score = st.session_state.quiz_score

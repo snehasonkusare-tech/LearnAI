@@ -7,6 +7,26 @@ import streamlit.components.v1 as components
 
 def show_flashcards():
     topic = st.session_state.get("topic", "")
+
+    # Init hard/easy tracking
+    if "flashcard_mastered" not in st.session_state:
+        st.session_state.flashcard_mastered = set()
+    if "flashcard_review" not in st.session_state:
+        st.session_state.flashcard_review = set()
+
+    mastered = len(st.session_state.flashcard_mastered)
+    needs_review = len(st.session_state.flashcard_review)
+    if mastered > 0 or needs_review > 0:
+        st.markdown(f"""
+        <div style="display:flex; gap:1rem; margin-bottom:1rem;">
+            <div style="padding:0.5rem 1rem; background:rgba(0,255,136,0.1);
+                        border:1px solid rgba(0,255,136,0.3); border-radius:8px;
+                        color:#00ff88; font-size:0.85rem;">👍 Mastered: {mastered}</div>
+            <div style="padding:0.5rem 1rem; background:rgba(255,107,107,0.1);
+                        border:1px solid rgba(255,107,107,0.3); border-radius:8px;
+                        color:#ff6b6b; font-size:0.85rem;">👎 Review: {needs_review}</div>
+        </div>
+        """, unsafe_allow_html=True)
     level = st.session_state.get("level", "Beginner")
     language = st.session_state.get("language", "English")
     lesson_data = st.session_state.get("lesson_data")

@@ -160,3 +160,20 @@ def show_dashboard():
         if st.button("🏆 Certifications"):
             st.session_state.page = "certification"
             st.rerun()
+            # Quiz score history
+    quiz_history = st.session_state.get("quiz_history", [])
+    if quiz_history:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div style="color:#ffffff; font-weight:700; margin-bottom:1rem;">🧪 Quiz History</div>', unsafe_allow_html=True)
+        for attempt in reversed(quiz_history[-5:]):
+            color = "#00ff88" if attempt["pct"] >= 80 else "#00d4ff" if attempt["pct"] >= 60 else "#ff6b6b"
+            st.markdown(f"""
+            <div style="display:flex; justify-content:space-between; padding:0.6rem 1rem;
+                        background:rgba(255,255,255,0.02); border-radius:8px;
+                        margin-bottom:0.4rem; border-left:3px solid {color};">
+                <span style="color:#c9d3e0; font-size:0.9rem;">{attempt['topic']}</span>
+                <span style="color:{color}; font-weight:700;">{attempt['score']}/{attempt['total']} ({attempt['pct']}%)</span>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
