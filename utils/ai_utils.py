@@ -1077,3 +1077,50 @@ For each section:
 Write in {language}. Every point must be specific to {topic} — no generic advice.""",
         max_tokens=3000
     )
+
+
+# ─────────────────────────────────────────────
+# FLOW DIAGRAM
+# ─────────────────────────────────────────────
+def generate_flow_diagram(topic: str, chapter_title: str, level: str, language: str) -> dict:
+    """Generate a structured, chapter-specific flow diagram."""
+    system = "You are an educational diagram designer. Return only valid JSON, no markdown, no extra text."
+    user = f"""Create a flow diagram that shows exactly how "{chapter_title}" works in {topic}.
+
+Return ONLY this JSON (no markdown fences):
+{{
+  "nodes": [
+    {{"id": 1, "label": "2-3 words", "desc": "5-7 words describing this step", "icon": "emoji"}},
+    {{"id": 2, "label": "2-3 words", "desc": "5-7 words describing this step", "icon": "emoji"}},
+    {{"id": 3, "label": "2-3 words", "desc": "5-7 words describing this step", "icon": "emoji"}},
+    {{"id": 4, "label": "2-3 words", "desc": "5-7 words describing this step", "icon": "emoji"}}
+  ],
+  "connections": [
+    {{"from": 1, "to": 2}},
+    {{"from": 2, "to": 3}},
+    {{"from": 3, "to": 4}}
+  ]
+}}
+
+Rules:
+- 4 to 5 nodes maximum
+- Labels must name REAL steps/components of {chapter_title} in {topic} (NOT generic like "Input/Process/Output")
+- Descriptions must be specific to {chapter_title} in {topic}
+- Icons must be relevant emojis that visually represent each step
+- Connections show the actual sequence or data flow of {chapter_title}
+- Write labels and descs in {language}"""
+
+    response = call_groq(system, user, max_tokens=600)
+    result = parse_json_response(response)
+
+    if not result or not result.get('nodes'):
+        result = {
+            "nodes": [
+                {"id": 1, "label": chapter_title[:15], "desc": "Process starts here", "icon": "▶️"},
+                {"id": 2, "label": "Core Logic", "desc": f"Main {chapter_title} logic", "icon": "⚙️"},
+                {"id": 3, "label": "Transform", "desc": "Data is processed", "icon": "🔄"},
+                {"id": 4, "label": "Result", "desc": "Output is produced", "icon": "✅"}
+            ],
+            "connections": [{"from": 1, "to": 2}, {"from": 2, "to": 3}, {"from": 3, "to": 4}]
+        }
+    return result

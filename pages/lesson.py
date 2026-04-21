@@ -2,7 +2,7 @@ import streamlit as st
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.ai_utils import generate_lesson_structure, generate_chapter_content
+from utils.ai_utils import generate_lesson_structure, generate_chapter_content, generate_flow_diagram
 from components.video_player import show_video_player
 import urllib.parse
 
@@ -181,6 +181,17 @@ def show_lesson():
                     st.session_state[cache_key] = build_fallback_chapter(topic, chapter['title'])
 
         content = st.session_state[cache_key]
+
+        # Generate chapter-specific flow diagram (cached)
+        flow_key = f"chapter_flow_{chapter_idx}"
+        if flow_key not in st.session_state:
+            try:
+                flow_data = generate_flow_diagram(topic, chapter['title'], level, language)
+                st.session_state[flow_key] = flow_data
+            except Exception:
+                st.session_state[flow_key] = {}
+        content = dict(content)  # make a copy so we don't mutate cached content
+        content['flow_diagram'] = st.session_state.get(flow_key, {})
 
         # 1. Full Explanation
         st.markdown('<span class="section-label label-explanation">📖 Full Explanation</span>', unsafe_allow_html=True)

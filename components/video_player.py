@@ -76,6 +76,18 @@ def build_scenes(content: dict, chapter_title: str, topic: str) -> list:
     exp_sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', content.get("explanation", "")) if len(s.strip()) > 20]
     explain_short = clean_text(exp_sents[0] if exp_sents else f"{chapter_title} is a key concept in {topic}.", 150)
 
+    # Chapter-specific flow diagram data
+    flow_data = content.get('flow_diagram', {})
+    flow_nodes = flow_data.get('nodes', [])
+    flow_conns = flow_data.get('connections', [])
+    # Fallback if AI didn't give us flow data
+    if not flow_nodes:
+        flow_nodes = [
+            {"id": i+1, "label": n, "desc": "", "icon": ["📥","⚙️","🔄","📤","✅"][i % 5]}
+            for i, n in enumerate(nodes[:5])
+        ]
+        flow_conns = [{"from": i+1, "to": i+2} for i in range(len(flow_nodes)-1)]
+
     return [
         {
             "type": "intro",
@@ -95,10 +107,11 @@ def build_scenes(content: dict, chapter_title: str, topic: str) -> list:
         },
         {
             "type": "flow",
-            "speech": f"{explain_short}. Watch how it flows from start to finish!",
-            "nodes": nodes,
+            "speech": f"This is exactly how {chapter_title} works — watch each step light up!",
+            "flowNodes": flow_nodes,
+            "connections": flow_conns,
             "bg": "tech",
-            "duration": 7000
+            "duration": 8000
         },
         {
             "type": "analogy",
@@ -535,72 +548,162 @@ function diagMindMap(scene,p,pr){{
   }});
 }}
 
-// FLOW DIAGRAM — left to right animated flow
+// FLOW DIAGRAM — beautiful circles with emoji, bezier arrows, particles
 function diagFlow(scene,p,pr){{
-  const nodes=scene.nodes||[];if(!nodes.length)return;
-  const n=Math.min(nodes.length,6);
-  const COLS=[p.ac,p.sc,p.tc,'#ff6b9d','#ff9500','#ffd700'];
+  const nodes=scene.flowNodes||[];
+  const conns=scene.connections||[];
+  if(!nodes.length)return;
+  const n=Math.min(nodes.length,5);
 
-  // Layout: up to 3 per row, 2 rows max
-  const cols=Math.min(n,3), rows=Math.ceil(n/cols);
-  const boxW=Math.min(120,160/cols), boxH=44;
-  const gapX=cols===1?0:(W*.72-boxW*cols)/(cols-1||1);
-  const gapY=80;
-  const startX=W*.3+(W*.66-cols*(boxW+gapX)+gapX)/2;
-  const startY=(H-(rows*(boxH+gapY)-gapY))/2;
+  // Beautiful colour palette per node
+  const NCOLS=[
+    ['#00d4ff','#0077bb'],['#a78bfa','#6d28d9'],
+    ['#00ff88','#00996b'],['#ff6b6b','#cc2222'],
+    ['#ffd700','#cc8800']
+  ];
 
+  const R=42; // node circle radius
+
+  // ── LAYOUT ──────────────────────────────────────────
+  const areaX=W*.3, areaW=W*.68-areaX;
   const positions=[];
-  for(let i=0;i<n;i++){{
-    const row=Math.floor(i/cols), col=i%cols;
-    positions.push({{
-      x: startX+col*(boxW+gapX)+boxW/2,
-      y: startY+row*(boxH+gapY)+boxH/2
-    }});
+  if(n<=4){{
+    // Single row centred in right area
+    const gap=72;
+    const totalW=n*(R*2)+(n-1)*gap;
+    const sx=areaX+(areaW-totalW)/2+R;
+    for(let i=0;i<n;i++) positions.push({{x:sx+i*(R*2+gap),y:H*.46}});
+  }}else{{
+    // Two rows
+    const r1=Math.ceil(n/2), r2=n-r1, gap=68;
+    const w1=r1*(R*2)+(r1-1)*gap, sx1=areaX+(areaW-w1)/2+R;
+    for(let i=0;i<r1;i++) positions.push({{x:sx1+i*(R*2+gap),y:H*.32}});
+    const w2=r2*(R*2)+(r2-1)*gap, sx2=areaX+(areaW-w2)/2+R;
+    for(let i=0;i<r2;i++) positions.push({{x:sx2+i*(R*2+gap),y:H*.66}});
   }}
 
-  // Animated arrows between nodes
-  for(let i=0;i<n-1;i++){{
-    const ap=eo(cl((pr-i*.1-.15)*4,0,1));if(ap<=0)continue;
-    const from=positions[i], to=positions[i+1];
-    const fx=from.x+(i%cols===cols-1?0:boxW/2+4);
-    const fy=from.y+(i%cols===cols-1?boxH/2+4:0);
-    const tx=to.x-(i%cols===cols-1?0:boxW/2+4);
-    const ty=to.y-(i%cols===cols-1?boxH/2+4:0);
-    arrow(fx,fy,tx,ty,ha(COLS[i%COLS.length],.7),2.5,ap);
-  }}
+  // ── CONNECTIONS ─────────────────────────────────────
+  conns.forEach((conn,ci)=>{{
+    const fi=conn.from-1, ti2=conn.to-1;
+    const from=positions[fi], to=positions[ti2];
+    if(!from||!to)return;
+    const cp=eo(cl((pr-.12-ci*.06)*4,0,1));if(cp<=0)return;
 
-  // Node boxes
-  for(let i=0;i<n;i++){{
-    const np=eo(cl((pr-i*.1)*4,0,1));if(np<=0)continue;
-    const {{x,y}}=positions[i];
-    const col=COLS[i%COLS.length];
-    const isFirst=i===0, isLast=i===n-1;
-    const glow=(gt*.6+i*.5)%1;
+    const c1=NCOLS[fi%NCOLS.length][0];
+    const c2=NCOLS[ti2%NCOLS.length][0];
+    const sameRow=Math.abs(from.y-to.y)<10;
 
-    c.save();c.globalAlpha=np;c.translate(0,(1-np)*12);
+    // Gradient stroke
+    const grd=c.createLinearGradient(from.x,from.y,to.x,to.y);
+    grd.addColorStop(0,ha(c1,.7));grd.addColorStop(1,ha(c2,.7));
 
-    // Glow behind node
-    c.save();c.globalAlpha=np*(1-glow)*.25;c.strokeStyle=col;c.lineWidth=2;
-    c.beginPath();c.arc(x,y,boxW/2+4+glow*20,0,Math.PI*2);c.stroke();c.restore();
+    c.save();c.globalAlpha=cp;c.strokeStyle=grd;c.lineWidth=3;c.lineCap='round';
 
-    // Box
-    const bg3=c.createLinearGradient(x-boxW/2,y-boxH/2,x+boxW/2,y+boxH/2);
-    bg3.addColorStop(0,ha(col,.25));bg3.addColorStop(1,ha(col,.08));
-    rr(x-boxW/2,y-boxH/2,boxW,boxH,10,bg3,col,isFirst||isLast?2.5:1.8);
+    let sx2,sy,ex2,ey,cpx1,cpy1,cpx2,cpy2;
+    if(sameRow){{
+      sx2=from.x+R+3;sy=from.y;ex2=to.x-R-3;ey=to.y;
+      cpx1=sx2+(ex2-sx2)*.4;cpy1=sy-30;
+      cpx2=sx2+(ex2-sx2)*.6;cpy2=ey-30;
+    }}else{{
+      sx2=from.x;sy=from.y+R+3;ex2=to.x;ey=to.y-R-3;
+      cpx1=sx2;cpy1=(sy+ey)/2;
+      cpx2=ex2;cpy2=(sy+ey)/2;
+    }}
 
-    // Number badge
-    c.beginPath();c.arc(x-boxW/2+14,y-boxH/2+14,11,0,Math.PI*2);
-    c.fillStyle=ha(col,.9);c.fill();
-    c.font='bold 10px Segoe UI';c.fillStyle='#000';c.textAlign='center';c.textBaseline='middle';
-    c.fillText(i+1,x-boxW/2+14,y-boxH/2+14);
+    c.beginPath();c.moveTo(sx2,sy);c.bezierCurveTo(cpx1,cpy1,cpx2,cpy2,ex2,ey);c.stroke();
 
-    // Label
-    const label=nodes[i];
-    c.font=`${{label.length>12?'bold 9px':'bold 11px'}} Segoe UI`;
-    c.fillStyle='#ffffff';c.textAlign='center';c.textBaseline='middle';
-    c.fillText(label.length>14?label.slice(0,13)+'…':label,x+4,y);
+    // Arrowhead
+    if(cp>.85){{
+      const angle=sameRow?0:Math.PI/2;
+      const dx2=ex2-cpx2,dy2=ey-cpy2;
+      const ang=Math.atan2(dy2,dx2);
+      c.fillStyle=ha(c2,.85*cp);
+      c.beginPath();c.moveTo(ex2,ey);
+      c.lineTo(ex2-13*Math.cos(ang-.4),ey-13*Math.sin(ang-.4));
+      c.lineTo(ex2-13*Math.cos(ang+.4),ey-13*Math.sin(ang+.4));
+      c.closePath();c.fill();
+    }}
+
+    // Animated particles along bezier
+    for(let pi=0;pi<3;pi++){{
+      const t2=((gt*.45+pi*.33)%1)*cp;
+      const mt=1-t2;
+      const px=mt*mt*mt*sx2+3*mt*mt*t2*cpx1+3*mt*t2*t2*cpx2+t2*t2*t2*ex2;
+      const py=mt*mt*mt*sy+3*mt*mt*t2*cpy1+3*mt*t2*t2*cpy2+t2*t2*t2*ey;
+      const pr2=4-pi;
+      c.save();c.globalAlpha=(.7-pi*.18)*cp;
+      const pg=c.createRadialGradient(px,py,0,px,py,pr2);
+      pg.addColorStop(0,ha('#ffffff',.9));pg.addColorStop(1,'transparent');
+      c.fillStyle=pg;c.beginPath();c.arc(px,py,pr2,0,Math.PI*2);c.fill();c.restore();
+    }}
+
     c.restore();
-  }}
+  }});
+
+  // ── NODES ────────────────────────────────────────────
+  nodes.slice(0,n).forEach((node,i)=>{{
+    const np=eo(cl((pr-i*.1)*4,0,1));if(np<=0)return;
+    const {{x,y}}=positions[i];
+    const [col1,col2]=NCOLS[i%NCOLS.length];
+    const pulse=(gt*.65+i*.4)%1;
+
+    c.save();c.globalAlpha=np;c.translate(0,(1-np)*18);
+
+    // Outer pulse ring
+    c.save();c.globalAlpha=np*(1-pulse)*.28;c.strokeStyle=col1;c.lineWidth=2.5;
+    c.beginPath();c.arc(x,y,R+5+pulse*22,0,Math.PI*2);c.stroke();c.restore();
+
+    // Drop shadow
+    c.save();c.globalAlpha=.22*np;
+    const sdw=c.createRadialGradient(x+3,y+5,0,x+3,y+5,R+6);
+    sdw.addColorStop(0,'rgba(0,0,0,.6)');sdw.addColorStop(1,'transparent');
+    c.fillStyle=sdw;c.beginPath();c.arc(x+3,y+5,R+6,0,Math.PI*2);c.fill();c.restore();
+
+    // Circle gradient fill
+    const grd=c.createRadialGradient(x-R*.3,y-R*.3,0,x,y,R);
+    grd.addColorStop(0,ha(col1,.95));grd.addColorStop(.6,ha(col1,.75));
+    grd.addColorStop(1,ha(col2,.9));
+    c.beginPath();c.arc(x,y,R,0,Math.PI*2);c.fillStyle=grd;c.fill();
+
+    // Bright border
+    c.strokeStyle=col1;c.lineWidth=2.5;c.stroke();
+
+    // Inner shine (top-left gloss)
+    c.save();c.globalAlpha=.2;
+    const shine=c.createRadialGradient(x-R*.4,y-R*.4,0,x-R*.4,y-R*.4,R*.7);
+    shine.addColorStop(0,'#ffffff');shine.addColorStop(1,'transparent');
+    c.fillStyle=shine;c.beginPath();c.arc(x,y,R,0,Math.PI*2);c.fill();c.restore();
+
+    // Emoji icon (large, centred)
+    c.font=`${{Math.round(26*np)}}px serif`;c.textAlign='center';c.textBaseline='middle';
+    c.fillText(node.icon||'●',x,y-3);
+
+    // Number badge (bottom-right)
+    c.beginPath();c.arc(x+R*.65,y+R*.65,11,0,Math.PI*2);
+    c.fillStyle=col2;c.fill();c.strokeStyle='#ffffff';c.lineWidth=1.5;c.stroke();
+    c.font='bold 10px Segoe UI';c.fillStyle='#ffffff';c.textBaseline='middle';c.textAlign='center';
+    c.fillText(i+1,x+R*.65,y+R*.65);
+
+    // Label below circle
+    c.font='bold 12px Segoe UI';c.fillStyle='#ffffff';c.textBaseline='alphabetic';c.textAlign='center';
+    const lbl=node.label||'';
+    c.fillText(lbl.length>14?lbl.slice(0,13)+'…':lbl,x,y+R+22);
+
+    // Short description
+    if(node.desc){{
+      c.font='10px Segoe UI';c.fillStyle=ha(col1,.85);
+      const d=node.desc.slice(0,20)+(node.desc.length>20?'…':'');
+      c.fillText(d,x,y+R+38);
+    }}
+
+    c.restore();
+  }});
+
+  // Flow title tag
+  c.save();c.globalAlpha=eo(cl(pr*4,0,1));
+  rr(areaX,12,160,26,13,ha(p.ac,.12),ha(p.ac,.4),1.5);
+  c.font='bold 11px Segoe UI';c.fillStyle=p.ac;c.textAlign='center';c.textBaseline='middle';
+  c.fillText('HOW IT WORKS',areaX+80,25);c.restore();
 }}
 
 // ANALOGY VISUAL — simple story illustration
