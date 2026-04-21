@@ -6,81 +6,128 @@ import streamlit.components.v1 as components
 import json
 import re
 
-def clean(text: str, limit: int = 300) -> str:
+
+def clean_text(text: str, limit: int = 250) -> str:
     if not text:
         return ""
     text = re.sub(r'\*{1,2}|_{1,2}', '', text)
-    text = text.replace('\\', '\\\\').replace('"', '\\"').replace("'", "\\'")
     text = re.sub(r'\s+', ' ', text.replace('\n', ' ')).strip()
     return text[:limit]
 
-def build_slides(content: dict, chapter_title: str, topic: str) -> list:
-    explanation = content.get("explanation", "")
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', explanation) if len(s.strip()) > 20]
 
+def build_narrated_scenes(content: dict, chapter_title: str, topic: str) -> list:
+    scenes = []
+
+    # Scene 1 — ARIA introduces herself
+    scenes.append({
+        "type": "intro",
+        "speech": f"Hey! I'm ARIA, your AI teacher! Today I'll explain {chapter_title} in a fun and clear way. Let's go!",
+        "pose": "wave",
+        "bg": "welcome",
+        "duration": 5000
+    })
+
+    # Scene 2 — Real-life story/analogy
     analogy = content.get("analogy", "")
-    analogy_sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', analogy) if len(s.strip()) > 15]
+    if analogy:
+        sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', analogy) if len(s.strip()) > 15]
+        analogy_text = sents[0] if sents else analogy[:220]
+    else:
+        analogy_text = f"Let me tell you a little story that makes {chapter_title} super easy to understand!"
+    scenes.append({
+        "type": "story",
+        "speech": clean_text(analogy_text, 220),
+        "pose": "explain",
+        "bg": "story",
+        "duration": 6000
+    })
 
+    # Scene 3 — Explanation part 1
+    explanation = content.get("explanation", "")
+    exp_sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', explanation) if len(s.strip()) > 20]
+    if exp_sents:
+        scenes.append({
+            "type": "explain",
+            "speech": clean_text(exp_sents[0], 220),
+            "pose": "teach",
+            "bg": "classroom",
+            "duration": 6500,
+            "highlight": clean_text(chapter_title, 32)
+        })
+
+    # Scene 4 — Explanation part 2
+    if len(exp_sents) > 2:
+        scenes.append({
+            "type": "explain",
+            "speech": clean_text(exp_sents[2], 220),
+            "pose": "point",
+            "bg": "classroom",
+            "duration": 6500,
+            "highlight": "Key Point"
+        })
+
+    # Scene 5 — Step by step example
     example = content.get("example", "")
     step_lines = []
     for line in example.split('\n'):
         line = line.strip()
         if re.match(r'^step\s*\d', line.lower()):
             parts = line.split(':', 1)
-            label = parts[0].strip() if parts else line
-            body = parts[1].strip() if len(parts) > 1 else ""
-            step_lines.append({"label": clean(label, 20), "body": clean(body, 90)})
-    if not step_lines:
-        for s in [s.strip() for s in example.split('\n') if len(s.strip()) > 15][:5]:
-            step_lines.append({"label": "Step", "body": clean(s, 90)})
+            if len(parts) > 1:
+                step_lines.append({"label": clean_text(parts[0], 15), "body": clean_text(parts[1], 85)})
+    if step_lines:
+        scenes.append({
+            "type": "steps",
+            "speech": "Now let me walk you through it step by step — follow along with me!",
+            "pose": "point",
+            "bg": "technical",
+            "duration": 7000,
+            "steps": step_lines[:4]
+        })
 
-    key_concepts = content.get("key_concepts", [])
-    cards = []
-    for c in key_concepts[:4]:
-        c = re.sub(r'\*{1,2}|_{1,2}', '', c).strip()
-        if ": " in c:
-            t, d = c.split(": ", 1)
-        else:
-            t, d = "Concept", c
-        cards.append({"title": clean(t, 28), "desc": clean(d, 90)})
+    # Scene 6 — Key concepts
+    concepts = content.get("key_concepts", [])
+    if concepts:
+        cards = []
+        names = []
+        for c in concepts[:4]:
+            c = re.sub(r'\*{1,2}|_{1,2}', '', c).strip()
+            if ': ' in c:
+                name, desc = c.split(': ', 1)
+            else:
+                name, desc = c[:30], c
+            names.append(clean_text(name, 20))
+            cards.append({"title": clean_text(name, 26), "desc": clean_text(desc, 72)})
+        scenes.append({
+            "type": "concepts",
+            "speech": f"Here are the key concepts you need to remember: {', '.join(names[:3])}.",
+            "pose": "explain",
+            "bg": "technical",
+            "duration": 7000,
+            "cards": cards
+        })
 
-    mistakes_text = content.get("common_mistakes", "")
-    mistake_lines = [s.strip() for s in mistakes_text.split('\n') if len(s.strip()) > 15][:3]
-    if not mistake_lines:
-        mistake_lines = [clean(mistakes_text, 150)]
-
+    # Scene 7 — Takeaway / celebration
     takeaway = content.get("key_takeaway", "")
-    takeaway_short = clean(" ".join([s.strip() for s in re.split(r'(?<=[.!?])\s+', takeaway) if len(s.strip()) > 10][:2]), 200)
+    if not takeaway:
+        takeaway = f"Amazing! You now understand {chapter_title}. Keep going — you're doing great!"
+    scenes.append({
+        "type": "celebrate",
+        "speech": clean_text(takeaway, 220),
+        "pose": "celebrate",
+        "bg": "celebration",
+        "duration": 6000
+    })
 
-    visual = content.get("visual", "")
-    nodes = []
-    for line in visual.split('\n'):
-        found = re.findall(r'\[([^\]]{2,28})\]|\(([^)]{2,28})\)', line)
-        for f in found:
-            label = (f[0] or f[1]).strip()
-            if label:
-                nodes.append(clean(label, 22))
-    nodes = list(dict.fromkeys(nodes))[:7]
-    if not nodes:
-        nodes = [clean(chapter_title, 22), "Process", "Output"]
-
-    slides = [
-        {"type": "title",     "title": clean(chapter_title, 55), "topic": clean(topic, 35), "desc": clean(sentences[0] if sentences else "", 130)},
-        {"type": "explain",   "title": clean(chapter_title, 45), "lines": [clean(s, 130) for s in sentences[:5]], "topic": clean(topic, 30)},
-        {"type": "flowchart", "title": "How It Works", "nodes": nodes, "topic": clean(topic, 30)},
-        {"type": "analogy",   "title": "Real Life Analogy", "lines": [clean(s, 130) for s in analogy_sentences[:4]]},
-        {"type": "steps",     "title": "Step by Step", "steps": step_lines[:5]},
-        {"type": "concepts",  "title": "Key Concepts", "cards": cards},
-        {"type": "mistakes",  "title": "Common Mistakes", "items": [clean(m, 110) for m in mistake_lines]},
-        {"type": "takeaway",  "title": "Key Takeaway", "body": takeaway_short, "topic": clean(topic, 30), "chapter": clean(chapter_title, 40)},
-    ]
-    return slides
+    return scenes
 
 
 def show_video_player(content: dict, chapter_title: str, topic: str):
-    slides = build_slides(content, chapter_title, topic)
-    slides_json = json.dumps(slides, ensure_ascii=False)
-    total = len(slides)
+    scenes = build_narrated_scenes(content, chapter_title, topic)
+    scenes_json = json.dumps(scenes, ensure_ascii=False)
+    total = len(scenes)
+    safe_topic = json.dumps(topic)
+    safe_chapter = json.dumps(chapter_title)
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -89,9 +136,9 @@ def show_video_player(content: dict, chapter_title: str, topic: str):
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{background:#06060f;font-family:'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;padding:6px}}
-#player{{width:100%;max-width:800px;border-radius:20px;overflow:hidden;box-shadow:0 0 80px rgba(0,212,255,0.18)}}
+#wrap{{width:100%;max-width:820px;border-radius:20px;overflow:hidden;box-shadow:0 0 60px rgba(0,212,255,0.18)}}
 #topbar{{height:4px;background:rgba(255,255,255,0.06)}}
-#topfill{{height:100%;width:0%;border-radius:2px;transition:width 0.6s ease}}
+#topfill{{height:100%;width:0%;border-radius:2px;transition:width 0.5s ease}}
 canvas{{display:block;width:100%;height:auto;background:#06060f}}
 #controls{{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#09091a;border-top:1px solid rgba(255,255,255,0.07)}}
 .cbtn{{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.13);border-radius:9px;color:#fff;width:38px;height:38px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s}}
@@ -99,602 +146,538 @@ canvas{{display:block;width:100%;height:auto;background:#06060f}}
 .cbtn.big{{width:44px;height:44px;font-size:16px}}
 #dots{{display:flex;gap:5px;align-items:center}}
 .dot{{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.2);cursor:pointer;transition:all 0.3s}}
-.dot.on{{border-radius:4px;width:22px}}
-#ctr{{font-size:12px;color:#8892a4;min-width:36px;text-align:right}}
+.dot.on{{border-radius:4px;width:20px}}
+#lbl{{font-size:11px;color:#8892a4;letter-spacing:1px;text-transform:uppercase}}
 </style>
 </head>
 <body>
-<div id="player">
+<div id="wrap">
   <div id="topbar"><div id="topfill"></div></div>
-  <canvas id="c" width="800" height="430"></canvas>
+  <canvas id="c" width="820" height="460"></canvas>
   <div id="controls">
     <div style="display:flex;gap:6px;align-items:center">
-      <button class="cbtn" onclick="prev()">◀</button>
-      <button class="cbtn big" id="pb" onclick="togglePlay()">⏸</button>
-      <button class="cbtn" onclick="nextSlide()">▶</button>
+      <button class="cbtn" onclick="prev()">&#9664;</button>
+      <button class="cbtn big" id="pb" onclick="togglePlay()">&#9646;&#9646;</button>
+      <button class="cbtn" onclick="nextScene()">&#9654;</button>
     </div>
     <div id="dots"></div>
-    <div id="ctr">1/{total}</div>
+    <div id="lbl">Scene 1 / {total}</div>
   </div>
 </div>
 
 <script>
-const slides = {slides_json};
-const TOTAL = slides.length;
-let cur = 0, playing = true, timer = null, animFrame = null;
-let t = 0;
-const DURATION = 8000;
+const SCENES = {scenes_json};
+const TOPIC = {safe_topic};
+const CHAPTER = {safe_chapter};
+const TOTAL = SCENES.length;
+const W = 820, H = 460;
 
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-const W = 800, H = 430;
+let cur=0, playing=true, timer=null, af=null;
+let gt=0, lt=0, slideStart=0, transAlpha=0;
+let charX=W*0.17, charTX=W*0.17;
 
-const PALETTES = [
-  {{bg:'#06060f', accent:'#00d4ff', secondary:'#7b61ff'}},
-  {{bg:'#0a0618', accent:'#a78bfa', secondary:'#00d4ff'}},
-  {{bg:'#060f0a', accent:'#00ff88', secondary:'#00d4ff'}},
-  {{bg:'#0f0a06', accent:'#ff9500', secondary:'#ff6b6b'}},
-  {{bg:'#0a0a18', accent:'#ffd700', secondary:'#ff9500'}},
-  {{bg:'#0c0618', accent:'#ff6b9d', secondary:'#a78bfa'}},
-  {{bg:'#0f0606', accent:'#ff6b6b', secondary:'#ffd700'}},
-  {{bg:'#06060f', accent:'#00d4ff', secondary:'#00ff88'}},
-];
-function pal(i){{ return PALETTES[i % PALETTES.length]; }}
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
 
+const PALETTES={{
+  welcome:{{bg:'#06060f',ac:'#00d4ff',sec:'#7b61ff'}},
+  story:  {{bg:'#060f0a',ac:'#00ff88',sec:'#00d4ff'}},
+  classroom:{{bg:'#0a0618',ac:'#a78bfa',sec:'#00d4ff'}},
+  technical:{{bg:'#0a0a18',ac:'#00d4ff',sec:'#7b61ff'}},
+  celebration:{{bg:'#0f0a06',ac:'#ffd700',sec:'#ff9500'}}
+}};
+
+function pal(){{ return PALETTES[SCENES[cur].bg]||PALETTES.welcome; }}
+function h2r(h){{ return {{r:parseInt(h.slice(1,3),16),g:parseInt(h.slice(3,5),16),b:parseInt(h.slice(5,7),16)}}; }}
+function ha(h,a){{ const {{r,g,b}}=h2r(h); return `rgba(${{r}},${{g}},${{b}},${{a}})`; }}
 function lerp(a,b,t){{ return a+(b-a)*t; }}
-function easeOut(t){{ return 1-Math.pow(1-t,3); }}
-function clamp(v,a,b){{ return Math.max(a,Math.min(b,v)); }}
+function eo(t){{ return 1-Math.pow(1-t,3); }}
+function cl(v,a,b){{ return Math.max(a,Math.min(b,v)); }}
 
-function wrapText(ctx, text, x, y, maxW, lineH){{
-  const words = text.split(' ');
-  let line = '', cy = y;
+function rr(x,y,w,h,r,fill,stroke,sw){{
+  ctx.beginPath();
+  if(ctx.roundRect)ctx.roundRect(x,y,w,h,typeof r==='number'?r:[r,r,r,r]);
+  else{{ctx.moveTo(x+(typeof r==='number'?r:r[0]),y);ctx.lineTo(x+w-(typeof r==='number'?r:r[1]),y);ctx.quadraticCurveTo(x+w,y,x+w,y+(typeof r==='number'?r:r[1]));ctx.lineTo(x+w,y+h-(typeof r==='number'?r:r[2]));ctx.quadraticCurveTo(x+w,y+h,x+w-(typeof r==='number'?r:r[2]),y+h);ctx.lineTo(x+(typeof r==='number'?r:r[3]),y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-(typeof r==='number'?r:r[3]));ctx.lineTo(x,y+(typeof r==='number'?r:r[0]));ctx.quadraticCurveTo(x,y,x+(typeof r==='number'?r:r[0]),y);ctx.closePath();}}
+  if(fill){{ctx.fillStyle=fill;ctx.fill();}}
+  if(stroke){{ctx.strokeStyle=stroke;ctx.lineWidth=sw||1.5;ctx.stroke();}}
+}}
+
+function wt(text,x,y,mw,lh,ml){{
+  ctx.save();
+  const words=text.split(' ');let line='',n=0,cy=y;
   for(let w of words){{
-    const test = line + w + ' ';
-    if(ctx.measureText(test).width > maxW && line){{
-      ctx.fillText(line.trim(), x, cy);
-      line = w + ' '; cy += lineH;
-    }} else line = test;
+    const test=line+w+' ';
+    if(ctx.measureText(test).width>mw&&line){{
+      if(!ml||n<ml)ctx.fillText(line.trim(),x,cy);
+      line=w+' ';cy+=lh;n++;
+      if(ml&&n>=ml)break;
+    }}else line=test;
   }}
-  if(line.trim()) ctx.fillText(line.trim(), x, cy);
+  if(line.trim()&&(!ml||n<ml))ctx.fillText(line.trim(),x,cy);
+  ctx.restore();
   return cy;
 }}
 
-function roundRect(ctx, x, y, w, h, r, fill, stroke, sw){{
-  ctx.beginPath();
-  ctx.roundRect(x,y,w,h,r);
-  if(fill){{ ctx.fillStyle=fill; ctx.fill(); }}
-  if(stroke){{ ctx.strokeStyle=stroke; ctx.lineWidth=sw||1.5; ctx.stroke(); }}
-}}
-
-function hexA(hex, a){{
-  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
-  return `rgba(${{r}},${{g}},${{b}},${{a}})`;
-}}
-
-function drawBg(p, t){{
-  ctx.fillStyle = p.bg;
-  ctx.fillRect(0,0,W,H);
-
+// ─── BACKGROUNDS ────────────────────────────────────────
+function bgWelcome(p){{
+  ctx.fillStyle=p.bg;ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.globalAlpha=0.04;ctx.strokeStyle=p.ac;ctx.lineWidth=1;
+  const g=50,off=(gt*12)%g;
+  for(let x=-g+off%g;x<W;x+=g){{ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}}
+  for(let y=0;y<H;y+=g){{ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  ctx.restore();
+  [[0.12,0.25,170,p.ac,0.07],[0.88,0.72,140,p.sec,0.06],[0.5,1.1,200,p.ac,0.05]].forEach(([ox,oy,or,col,oa])=>{{
+    const gd=ctx.createRadialGradient(ox*W,oy*H,0,ox*W,oy*H,or);
+    gd.addColorStop(0,ha(col,oa+0.02*Math.sin(gt*1.2)));gd.addColorStop(1,'transparent');
+    ctx.fillStyle=gd;ctx.fillRect(0,0,W,H);
+  }});
   ctx.save();
-  ctx.globalAlpha = 0.04;
-  ctx.strokeStyle = p.accent;
-  ctx.lineWidth = 1;
-  const gridSize = 50;
-  const offset = (t * 20) % gridSize;
-  for(let x = -gridSize+offset%gridSize; x < W; x+=gridSize){{
-    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
-  }}
-  for(let y = 0; y < H; y+=gridSize){{
-    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  for(let i=0;i<25;i++){{
+    const sx=(i*173+i*i*7)%W,sy=(i*97+i*i*3)%H;
+    const a=0.2+0.25*Math.sin(gt*1.3+i*0.9);
+    ctx.fillStyle=ha(i%3===0?p.ac:p.sec,a*0.5);
+    ctx.beginPath();ctx.arc(sx,sy,1+i%2*0.5,0,Math.PI*2);ctx.fill();
   }}
   ctx.restore();
+}}
 
-  const orbs = [
-    {{x:0.15, y:0.2, r:180, col:p.accent}},
-    {{x:0.85, y:0.75, r:150, col:p.secondary}},
-    {{x:0.5, y:1.1, r:200, col:p.accent}},
-  ];
-  orbs.forEach((o,i)=>{{
-    const pulse = 0.08 + 0.03*Math.sin(t*1.5+i*2);
-    const grd = ctx.createRadialGradient(o.x*W, o.y*H, 0, o.x*W, o.y*H, o.r);
-    grd.addColorStop(0, hexA(o.col, pulse));
-    grd.addColorStop(1, 'transparent');
-    ctx.fillStyle = grd;
-    ctx.fillRect(0,0,W,H);
-  }});
-
+function bgStory(p){{
+  const sky=ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,'#020c16');sky.addColorStop(0.55,'#060f0a');sky.addColorStop(1,'#0a1a0a');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.globalAlpha=0.75;
+  const mg=ctx.createRadialGradient(700,65,0,700,65,40);
+  mg.addColorStop(0,'#ffffff');mg.addColorStop(0.5,'#c8ffd4');mg.addColorStop(1,'transparent');
+  ctx.fillStyle=mg;ctx.beginPath();ctx.arc(700,65,35,0,Math.PI*2);ctx.fill();ctx.restore();
   ctx.save();
-  for(let i=0;i<12;i++){{
-    const px = (W*0.1 + W*0.8*((i*137.5+t*8)%W)/W);
-    const py = (H - (H*(((i*73+t*15+i*200)%H))/H) + H) % H;
-    const alpha = 0.3 + 0.2*Math.sin(t*2+i);
-    ctx.fillStyle = hexA(i%2===0?p.accent:p.secondary, alpha*0.6);
+  for(let i=0;i<35;i++){{
+    const sx=(i*157+i*i*11)%W,sy=(i*83+i*i*5)%(H*0.5);
+    const a=0.3+0.35*Math.sin(gt+i*0.75);
+    ctx.fillStyle=`rgba(255,255,255,${{a*0.55}})`;
+    ctx.beginPath();ctx.arc(sx,sy,0.7+i%2*0.5,0,Math.PI*2);ctx.fill();
+  }}
+  ctx.restore();
+  const gnd=ctx.createLinearGradient(0,H*0.7,0,H);
+  gnd.addColorStop(0,'#081408');gnd.addColorStop(1,'#040a04');
+  ctx.fillStyle=gnd;ctx.fillRect(0,H*0.7,W,H);
+  ctx.save();ctx.globalAlpha=0.55;
+  [[65,H*0.7,28,65],[680,H*0.7,22,52],[710,H*0.7,16,42],[745,H*0.7,24,58]].forEach(([tx,ty,tw,th])=>{{
+    ctx.fillStyle='#0c1e0c';
+    ctx.beginPath();ctx.moveTo(tx,ty-th);ctx.lineTo(tx-tw,ty);ctx.lineTo(tx+tw,ty);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#060e06';rr(tx-tw*0.25,ty,tw*0.5,18,3,'#060e06');
+  }});
+  ctx.restore();
+  ctx.save();ctx.globalAlpha=0.25;
+  const path=ctx.createLinearGradient(W/2,H*0.7,W/2,H);
+  path.addColorStop(0,ha(p.ac,0.5));path.addColorStop(1,'transparent');
+  ctx.fillStyle=path;
+  ctx.beginPath();ctx.moveTo(W/2-18,H*0.7);ctx.lineTo(W/2-55,H);ctx.lineTo(W/2+55,H);ctx.lineTo(W/2+18,H*0.7);ctx.closePath();ctx.fill();
+  ctx.restore();
+}}
+
+function bgClassroom(p){{
+  ctx.fillStyle=p.bg;ctx.fillRect(0,0,W,H);
+  const bx=400,by=35,bw=380,bh=260;
+  rr(bx,by,bw,bh,14,ha(p.ac,0.05),ha(p.ac,0.18),1.5);
+  ctx.save();ctx.globalAlpha=0.7;
+  ctx.font='bold 13px Segoe UI';ctx.fillStyle=p.ac;ctx.textAlign='center';
+  ctx.fillText((SCENES[cur].highlight||'KEY CONCEPT').toUpperCase(),bx+bw/2,by+26);ctx.restore();
+  ctx.save();ctx.globalAlpha=0.25;ctx.strokeStyle=p.ac;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(bx+18,by+36);ctx.lineTo(bx+bw-18,by+36);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+  const wp=cl((gt-slideStart/1000-0.5)*0.28,0,1);
+  ctx.save();ctx.globalAlpha=0.45*wp;ctx.font='12px monospace';ctx.fillStyle='#b8c4d4';ctx.textAlign='left';
+  ['• Core concept','• Application','• Key formula','• Remember this'].forEach((l,i)=>{{
+    if(i/4<wp)ctx.fillText(l,bx+20,by+62+i*32);
+  }});
+  ctx.restore();
+  ctx.save();ctx.globalAlpha=0.12;ctx.strokeStyle='#ffffff';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(0,H*0.78);ctx.lineTo(W*0.44,H*0.78);ctx.stroke();ctx.restore();
+  ctx.save();ctx.globalAlpha=0.03;ctx.strokeStyle=p.ac;ctx.lineWidth=1;
+  for(let x=0;x<W;x+=50){{ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}}
+  for(let y=0;y<H;y+=50){{ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  ctx.restore();
+}}
+
+function bgTechnical(p){{
+  ctx.fillStyle=p.bg;ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.globalAlpha=0.04;ctx.strokeStyle=p.ac;ctx.lineWidth=1;
+  const gs=40,off=(gt*8)%gs;
+  for(let x=-gs+off%gs;x<W;x+=gs){{ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}}
+  for(let y=off;y<H;y+=gs){{ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  ctx.restore();
+  ctx.save();
+  for(let i=0;i<7;i++){{
+    const nx=580+Math.cos(gt*0.28+i*1.0)*110,ny=210+Math.sin(gt*0.35+i*1.0)*75;
+    const nr=14+i*4;
+    ctx.globalAlpha=0.06+0.02*Math.sin(gt+i);
+    ctx.strokeStyle=i%2===0?p.ac:p.sec;ctx.lineWidth=1.5;
     ctx.beginPath();
-    ctx.arc(px%W, py%H, 1.5+i%2, 0, Math.PI*2);
-    ctx.fill();
+    for(let j=0;j<6;j++){{const a=j/6*Math.PI*2-Math.PI/6;j===0?ctx.moveTo(nx+Math.cos(a)*nr,ny+Math.sin(a)*nr):ctx.lineTo(nx+Math.cos(a)*nr,ny+Math.sin(a)*nr);}}
+    ctx.closePath();ctx.stroke();
   }}
   ctx.restore();
-}}
-
-function drawTitle(s, p, progress){{
-  const a  = easeOut(clamp(progress*3,0,1));
-  const a2 = easeOut(clamp((progress-0.15)*3,0,1));
-  const a3 = easeOut(clamp((progress-0.3)*3,0,1));
-  const a4 = easeOut(clamp((progress-0.45)*3,0,1));
-
-  ctx.save();
-  ctx.globalAlpha = 0.12 * a;
-  const grd = ctx.createRadialGradient(W/2, H*0.38, 0, W/2, H*0.38, 220);
-  grd.addColorStop(0, p.accent); grd.addColorStop(1, 'transparent');
-  ctx.fillStyle = grd;
-  ctx.beginPath(); ctx.arc(W/2, H*0.38, 220, 0, Math.PI*2); ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.globalAlpha = 0.25 * a;
-  ctx.strokeStyle = p.accent; ctx.lineWidth = 2;
-  ctx.setLineDash([8,12]); ctx.lineDashOffset = -t * 30;
-  ctx.beginPath(); ctx.arc(W/2, H*0.38, 160 + 10*Math.sin(t), 0, Math.PI*2); ctx.stroke();
-  ctx.setLineDash([]); ctx.restore();
-
-  ctx.save();
-  ctx.globalAlpha = 0.12 * a;
-  ctx.strokeStyle = p.secondary; ctx.lineWidth = 1.5;
-  ctx.setLineDash([4,16]); ctx.lineDashOffset = t * 20;
-  ctx.beginPath(); ctx.arc(W/2, H*0.38, 200 + 8*Math.cos(t*0.8), 0, Math.PI*2); ctx.stroke();
-  ctx.setLineDash([]); ctx.restore();
-
-  ctx.save();
-  ctx.globalAlpha = a * 0.9;
-  ctx.font = `${{Math.round(72*a)}}px serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('🧠', W/2, H*0.35 - 10*(1-a));
-  ctx.restore();
-
-  ctx.save();
-  ctx.globalAlpha = a2;
-  ctx.font = '600 13px Segoe UI'; ctx.fillStyle = p.accent;
-  ctx.textAlign = 'center';
-  ctx.fillText(s.topic.toUpperCase(), W/2, H*0.55 - 8*(1-a2));
-  ctx.restore();
-
-  ctx.save();
-  ctx.globalAlpha = a3;
-  ctx.textAlign = 'center'; ctx.fillStyle = '#ffffff';
-  const titleSize = s.title.length > 30 ? 28 : 34;
-  ctx.font = `800 ${{titleSize}}px Segoe UI`;
-  ctx.fillText(s.title, W/2, H*0.66 - 12*(1-a3));
-  ctx.restore();
-
-  ctx.save();
-  ctx.globalAlpha = a4 * 0.75;
-  ctx.font = '14px Segoe UI'; ctx.fillStyle = '#c9d3e0'; ctx.textAlign = 'center';
-  wrapText(ctx, s.desc, W/2 - 220, H*0.77, 440, 22);
-  ctx.restore();
-
-  ctx.save();
-  ctx.globalAlpha = a4;
-  const lineW = 80 * a4;
-  const grd2 = ctx.createLinearGradient(W/2-lineW, 0, W/2+lineW, 0);
-  grd2.addColorStop(0, 'transparent'); grd2.addColorStop(0.5, p.accent); grd2.addColorStop(1, 'transparent');
-  ctx.strokeStyle = grd2; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(W/2-lineW, H*0.88); ctx.lineTo(W/2+lineW, H*0.88); ctx.stroke();
-  ctx.restore();
-}}
-
-function drawExplain(s, p, progress){{
-  const headA = easeOut(clamp(progress*4,0,1));
-
-  ctx.save(); ctx.globalAlpha = 0.06;
-  roundRect(ctx, 30, 30, 6, H-60, 3, p.accent); ctx.restore();
-
-  ctx.save(); ctx.globalAlpha = headA;
-  roundRect(ctx, 50, 35, 130, 26, 13, hexA(p.accent,0.15), p.accent, 1);
-  ctx.font = '700 11px Segoe UI'; ctx.fillStyle = p.accent; ctx.textAlign = 'center';
-  ctx.fillText('EXPLANATION', 115, 52); ctx.restore();
-
-  ctx.save(); ctx.globalAlpha = headA;
-  ctx.font = `700 26px Segoe UI`; ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left';
-  ctx.fillText(s.title, 50, 92); ctx.restore();
-
-  ctx.save(); ctx.globalAlpha = headA * 0.6;
-  ctx.strokeStyle = p.accent; ctx.lineWidth = 2;
-  const underW = Math.min(ctx.measureText(s.title).width, W-100) * headA;
-  ctx.beginPath(); ctx.moveTo(50, 100); ctx.lineTo(50+underW, 100); ctx.stroke(); ctx.restore();
-
-  const linesPerSlide = s.lines || [];
-  linesPerSlide.forEach((line, i) => {{
-    const lineProgress = easeOut(clamp((progress - 0.15 - i*0.12)*5, 0, 1));
-    if(lineProgress <= 0) return;
-    const y = 135 + i * 58;
-
-    ctx.save(); ctx.globalAlpha = lineProgress;
-    const grd = ctx.createRadialGradient(58, y+8, 0, 58, y+8, 14);
-    grd.addColorStop(0, hexA(p.accent, 0.3)); grd.addColorStop(1, 'transparent');
-    ctx.fillStyle = grd;
-    ctx.beginPath(); ctx.arc(58, y+8, 14, 0, Math.PI*2); ctx.fill();
-    ctx.font = '700 11px Segoe UI'; ctx.fillStyle = p.accent; ctx.textAlign = 'center';
-    ctx.fillText((i+1)+'', 58, y+13); ctx.restore();
-
-    ctx.save(); ctx.globalAlpha = lineProgress * 0.9;
-    ctx.font = '14.5px Segoe UI'; ctx.fillStyle = '#dde4ee'; ctx.textAlign = 'left';
-    wrapText(ctx, line, 84, y+2, W-140, 20); ctx.restore();
-
-    if(i < linesPerSlide.length-1){{
-      ctx.save(); ctx.globalAlpha = lineProgress * 0.08;
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(50, y+46); ctx.lineTo(W-50, y+46); ctx.stroke(); ctx.restore();
-    }}
+  [[0.1,0.2,110,p.ac,0.06],[0.85,0.78,95,p.sec,0.05]].forEach(([ox,oy,or,col,oa])=>{{
+    const gd=ctx.createRadialGradient(ox*W,oy*H,0,ox*W,oy*H,or);
+    gd.addColorStop(0,ha(col,oa));gd.addColorStop(1,'transparent');
+    ctx.fillStyle=gd;ctx.fillRect(0,0,W,H);
   }});
 }}
 
-function drawFlowchart(s, p, progress){{
-  const nodes = s.nodes || [];
-  if(!nodes.length) return;
-  const headA = easeOut(clamp(progress*4, 0, 1));
-
-  ctx.save(); ctx.globalAlpha = headA;
-  roundRect(ctx, W/2-65, 28, 130, 26, 13, hexA(p.accent,0.15), p.accent, 1);
-  ctx.font = '700 11px Segoe UI'; ctx.fillStyle = p.accent; ctx.textAlign = 'center';
-  ctx.fillText('HOW IT WORKS', W/2, 45);
-  ctx.font = '700 24px Segoe UI'; ctx.fillStyle = '#ffffff';
-  ctx.fillText(s.title, W/2, 88); ctx.restore();
-
-  const n = nodes.length;
-  const nodeW = 130, nodeH = 42;
-  const cols = Math.min(n, 3);
-  const startX = W/2 - ((cols-1) * 180)/2;
-  const positions = [];
-  for(let i=0;i<n;i++){{
-    const row = Math.floor(i/3);
-    const col = row%2===0 ? i%3 : 2-(i%3);
-    positions.push({{x: startX + col*180, y: 130 + row*100}});
+function bgCelebration(p){{
+  ctx.fillStyle=p.bg;ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.globalAlpha=0.1+0.04*Math.sin(gt*2);
+  const burst=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,300);
+  burst.addColorStop(0,p.ac);burst.addColorStop(0.5,p.sec);burst.addColorStop(1,'transparent');
+  ctx.fillStyle=burst;ctx.fillRect(0,0,W,H);ctx.restore();
+  const cc=[p.ac,p.sec,'#ff6b6b','#00ff88','#ffd700','#ff9500'];
+  ctx.save();
+  for(let i=0;i<45;i++){{
+    const cx2=(i*137.5+gt*28*((i%3)-1)*0.9)%W;
+    const cy2=((i*73+gt*38+i*195)%H);
+    const a=0.4+0.3*Math.sin(gt*2+i);
+    ctx.fillStyle=ha(cc[i%cc.length],a*0.7);
+    ctx.save();ctx.translate(cx2%W,cy2%H);ctx.rotate(gt+i);
+    ctx.fillRect(-4,-4,8,3);ctx.restore();
   }}
+  ctx.restore();
+  ctx.save();
+  for(let i=0;i<10;i++){{
+    const angle=i/10*Math.PI*2+gt*0.18;
+    const r=140+45*Math.sin(gt*1.4+i);
+    const sx=W/2+Math.cos(angle)*r,sy=H/2+Math.sin(angle)*r*0.5;
+    ctx.globalAlpha=0.3+0.2*Math.sin(gt*3+i);
+    ctx.font=`${{14+i%4*3}}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(i%2===0?'⭐':'✨',sx,sy);
+  }}
+  ctx.restore();
+}}
 
-  for(let i=0;i<n-1;i++){{
-    const cp = easeOut(clamp((progress - 0.1 - i*0.08)*6, 0, 1));
-    if(cp <= 0) continue;
-    const from = positions[i], to = positions[i+1];
-    ctx.save(); ctx.globalAlpha = 0.5 * cp;
-    ctx.strokeStyle = p.accent; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
-    const fx=from.x, fy=from.y+nodeH/2, tx=to.x, ty=to.y+nodeH/2;
-    ctx.beginPath(); ctx.moveTo(fx, fy);
-    if(from.x === to.x) ctx.lineTo(fx, lerp(fy,ty,cp));
-    else if(from.y === to.y) ctx.lineTo(lerp(fx,tx,cp), fy);
-    else {{ ctx.lineTo(fx, fy+(ty-fy)*cp*0.5); ctx.lineTo(lerp(fx,tx,cp), fy+(ty-fy)*cp*0.5); }}
-    ctx.stroke(); ctx.setLineDash([]);
-    if(cp > 0.9){{
-      ctx.globalAlpha = cp; ctx.fillStyle = p.accent;
-      ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(tx-6,ty-5); ctx.lineTo(tx-6,ty+5); ctx.fill();
-    }}
+// ─── ARIA CHARACTER ─────────────────────────────────────
+function drawARIA(x,y,sc,pose,talk){{
+  const p=pal();
+  ctx.save();ctx.translate(x,y);ctx.scale(sc,sc);
+  const br=Math.sin(gt*1.8)*2;
+  const mo=Math.sin(talk*8)*0.5+0.5;
+
+  // Shadow
+  ctx.save();ctx.globalAlpha=0.15;ctx.fillStyle='#000000';
+  ctx.beginPath();ctx.ellipse(0,128,36,9,0,0,Math.PI*2);ctx.fill();ctx.restore();
+
+  // Legs
+  [-14,14].forEach((lx,li)=>{{
+    const ls=pose==='celebrate'?Math.sin(gt*3+li*Math.PI)*7:0;
+    ctx.save();ctx.translate(lx,90+br*0.3);ctx.rotate(ls*0.05);
+    rr(-6,0,13,30,5,ha(p.ac,0.65),p.ac,1.5);
+    rr(-8,27,18,8,4,ha(p.sec,0.75),p.sec,1);
+    ctx.restore();
+  }});
+
+  // Body
+  const bg2=ctx.createLinearGradient(-28,22,28,82);
+  bg2.addColorStop(0,ha(p.ac,0.22));bg2.addColorStop(1,ha(p.sec,0.14));
+  rr(-28,22+br*0.3,56,60,10,bg2,p.ac,2);
+  ctx.save();ctx.globalAlpha=0.12+0.05*Math.sin(gt*2);
+  const bg3=ctx.createRadialGradient(0,50,0,0,50,50);
+  bg3.addColorStop(0,p.ac);bg3.addColorStop(1,'transparent');
+  ctx.fillStyle=bg3;ctx.fillRect(-35,18,70,70);ctx.restore();
+  ctx.save();ctx.globalAlpha=0.22;ctx.strokeStyle=p.ac;ctx.lineWidth=0.8;
+  [[0,38],[0,52],[0,65]].forEach(([bx3,by3])=>{{ctx.beginPath();ctx.moveTo(-20,by3+br*0.2);ctx.lineTo(20,by3+br*0.2);ctx.stroke();}});
+  ctx.beginPath();ctx.moveTo(-8,38+br*0.2);ctx.lineTo(-8,65+br*0.2);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(8,38+br*0.2);ctx.lineTo(8,65+br*0.2);ctx.stroke();ctx.restore();
+  const core=ctx.createRadialGradient(0,52,0,0,52,7);
+  core.addColorStop(0,ha(p.ac,0.9+0.1*Math.sin(gt*3)));core.addColorStop(1,ha(p.ac,0.1));
+  ctx.beginPath();ctx.arc(0,52+br*0.2,5.5,0,Math.PI*2);ctx.fillStyle=core;ctx.fill();
+
+  // Arms
+  let la=-Math.PI/8+br*0.01, ra=Math.PI/8;
+  if(pose==='wave'){{la=-Math.PI/2.4+Math.sin(gt*4)*0.22;}}
+  else if(pose==='point'){{la=-Math.PI/3;}}
+  else if(pose==='celebrate'){{la=-Math.PI/2+Math.sin(gt*3)*0.28;ra=-Math.PI/2+Math.sin(gt*3+1)*0.28;}}
+
+  ctx.save();ctx.translate(-28,36+br*0.3);ctx.rotate(la);
+  rr(-6,0,12,36,5,ha(p.ac,0.55),p.ac,1.5);
+  ctx.beginPath();ctx.arc(0,36,7,0,Math.PI*2);ctx.fillStyle=ha(p.ac,0.8);ctx.fill();ctx.strokeStyle=p.ac;ctx.lineWidth=1.5;ctx.stroke();
+  if(pose==='wave'){{ctx.font='16px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('👋',0,36);}}
+  ctx.restore();
+
+  ctx.save();ctx.translate(28,36+br*0.3);ctx.rotate(ra);
+  rr(-6,0,12,36,5,ha(p.sec,0.55),p.sec,1.5);
+  ctx.beginPath();ctx.arc(0,36,7,0,Math.PI*2);ctx.fillStyle=ha(p.sec,0.8);ctx.fill();ctx.strokeStyle=p.sec;ctx.lineWidth=1.5;ctx.stroke();
+  if(pose==='point'){{ctx.font='14px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('👉',0,36);}}
+  if(pose==='celebrate'){{ctx.font='14px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🎉',0,36);}}
+  ctx.restore();
+
+  // Head
+  const hy=-42+br;
+  ctx.save();ctx.globalAlpha=0.11+0.04*Math.sin(gt*1.4);
+  const aura=ctx.createRadialGradient(0,hy,0,0,hy,55);
+  aura.addColorStop(0,p.ac);aura.addColorStop(1,'transparent');
+  ctx.fillStyle=aura;ctx.fillRect(-60,hy-55,120,110);ctx.restore();
+  const hg=ctx.createRadialGradient(-8,hy-8,4,0,hy,38);
+  hg.addColorStop(0,'#1e1e3f');hg.addColorStop(0.7,'#0d0d22');hg.addColorStop(1,'#080818');
+  ctx.beginPath();ctx.arc(0,hy,37,0,Math.PI*2);ctx.fillStyle=hg;ctx.fill();
+  ctx.strokeStyle=p.ac;ctx.lineWidth=2.5;ctx.stroke();
+  ctx.save();ctx.globalAlpha=0.18;ctx.strokeStyle=p.sec;ctx.lineWidth=1;ctx.setLineDash([4,6]);
+  ctx.beginPath();ctx.arc(0,hy,30,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+  const vg=ctx.createLinearGradient(-23,hy-17,23,hy+8);
+  vg.addColorStop(0,ha(p.ac,0.22));vg.addColorStop(1,ha(p.ac,0.05));
+  rr(-23,hy-17,46,27,8,vg,ha(p.ac,0.38),1.5);
+  ctx.save();ctx.globalAlpha=0.1;rr(-19,hy-14,18,8,4,ha('#ffffff',0.5));ctx.restore();
+
+  // Eyes
+  const blink=Math.abs(Math.sin(gt*0.33));
+  [[-11,hy-5],[11,hy-5]].forEach(([ex,ey],ei)=>{{
+    const bh2=blink<0.05?0.1:1;
+    ctx.save();ctx.translate(0,ey*(1-bh2));ctx.scale(1,bh2);
+    ctx.globalAlpha=(0.25+0.15*Math.sin(gt*2+ei))*bh2;
+    const eg=ctx.createRadialGradient(ex,ey/bh2,0,ex,ey/bh2,12);
+    eg.addColorStop(0,p.ac);eg.addColorStop(1,'transparent');
+    ctx.fillStyle=eg;ctx.beginPath();ctx.arc(ex,ey/bh2,12,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=bh2;
+    const ec=ctx.createRadialGradient(ex,ey/bh2,0,ex,ey/bh2,5);
+    ec.addColorStop(0,'#ffffff');ec.addColorStop(0.4,p.ac);ec.addColorStop(1,ha(p.ac,0.3));
+    ctx.beginPath();ctx.arc(ex,ey/bh2,5,0,Math.PI*2);ctx.fillStyle=ec;ctx.fill();
+    ctx.restore();
+  }});
+
+  // Mouth
+  const my=hy+13;
+  if(mo>0.4&&talk>0){{
+    const mh=2.5+mo*5;
+    ctx.beginPath();ctx.ellipse(0,my,9,mh,0,0,Math.PI*2);
+    ctx.fillStyle=ha(p.ac,0.4);ctx.fill();ctx.strokeStyle=p.ac;ctx.lineWidth=1.5;ctx.stroke();
+    ctx.save();ctx.globalAlpha=0.45*mo;
+    const mg2=ctx.createRadialGradient(0,my,0,0,my,9);
+    mg2.addColorStop(0,ha('#ffffff',0.8));mg2.addColorStop(1,'transparent');
+    ctx.fillStyle=mg2;ctx.beginPath();ctx.ellipse(0,my,9,mh,0,0,Math.PI*2);ctx.fill();ctx.restore();
+  }}else{{
+    ctx.beginPath();ctx.arc(0,my-2,8,0.18,Math.PI-0.18);
+    ctx.strokeStyle=p.ac;ctx.lineWidth=2;ctx.stroke();
+    ctx.save();ctx.globalAlpha=0.35;
+    [[-15,my+2],[15,my+2]].forEach(([cx2,cy2])=>{{ctx.fillStyle=ha('#ff9090',0.7);ctx.beginPath();ctx.arc(cx2,cy2,3,0,Math.PI*2);ctx.fill();}});
     ctx.restore();
   }}
 
-  nodes.forEach((node, i) => {{
-    const np = easeOut(clamp((progress - i*0.09)*5, 0, 1));
-    if(np <= 0) return;
-    const {{x, y}} = positions[i];
-    const scale = 0.6 + 0.4*np;
-    const nx = x - (nodeW*scale)/2;
-    const isFirst = i===0, isLast = i===n-1;
-    const ac = isFirst ? p.accent : isLast ? p.secondary : hexA(p.accent, 0.5);
+  // Antenna
+  const ay=hy-37,as2=Math.sin(gt*1.4)*3;
+  ctx.save();ctx.strokeStyle=ha(p.ac,0.6);ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(0,ay);ctx.lineTo(as2,ay-22);ctx.stroke();
+  const ag=ctx.createRadialGradient(as2,ay-24,0,as2,ay-24,7);
+  ag.addColorStop(0,p.ac);ag.addColorStop(1,ha(p.ac,0.2));
+  ctx.beginPath();ctx.arc(as2,ay-24,5+Math.sin(gt*3),0,Math.PI*2);ctx.fillStyle=ag;ctx.fill();ctx.restore();
 
-    ctx.save(); ctx.globalAlpha = np;
-    ctx.translate(x, y+nodeH/2); ctx.scale(scale,scale); ctx.translate(-x,-(y+nodeH/2));
+  // Name tag
+  ctx.save();ctx.globalAlpha=0.65;
+  rr(-20,100+br*0.3,40,14,7,ha(p.ac,0.15),ha(p.ac,0.38),1);
+  ctx.font='bold 8px Segoe UI';ctx.fillStyle=p.ac;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('ARIA',0,107+br*0.3);ctx.restore();
 
-    const grd = ctx.createRadialGradient(x,y+nodeH/2,0,x,y+nodeH/2,70);
-    grd.addColorStop(0, hexA(i===0?p.accent:p.secondary, 0.2)); grd.addColorStop(1,'transparent');
-    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(x,y+nodeH/2,70,0,Math.PI*2); ctx.fill();
-
-    roundRect(ctx, nx, y, nodeW*scale, nodeH*scale, 10,
-      hexA(isFirst||isLast?(isFirst?p.accent:p.secondary):p.accent, 0.15),
-      ac, isFirst||isLast?2:1.5);
-
-    ctx.font='700 10px Segoe UI'; ctx.fillStyle=hexA(i===0?p.accent:p.secondary,0.8);
-    ctx.textAlign='left'; ctx.fillText((i+1)+'', nx+10, y+15);
-
-    ctx.font=`${{isFirst||isLast?'700':'600'}} 12px Segoe UI`;
-    ctx.fillStyle=isFirst||isLast?'#ffffff':'#dde4ee';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(node.length>18?node.slice(0,17)+'…':node, x, y+nodeH/2);
-    ctx.textBaseline='alphabetic'; ctx.restore();
-  }});
-}}
-
-function drawAnalogy(s, p, progress){{
-  const headA = easeOut(clamp(progress*4,0,1));
-  const emojiA = easeOut(clamp((progress-0.05)*5,0,1));
-
-  ctx.save(); ctx.globalAlpha = emojiA;
-  const grd = ctx.createRadialGradient(200,H/2,0,200,H/2,140);
-  grd.addColorStop(0, hexA(p.accent,0.12)); grd.addColorStop(1,'transparent');
-  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
-  ctx.strokeStyle=hexA(p.accent, 0.2+0.1*Math.sin(t*2)); ctx.lineWidth=2;
-  ctx.setLineDash([8,10]);
-  ctx.beginPath(); ctx.arc(200,H/2,110+5*Math.sin(t),0,Math.PI*2); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.font=`${{Math.round(80*emojiA)}}px serif`;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('💡', 200, H/2-10); ctx.restore();
-
-  const RX = 360;
-  ctx.save(); ctx.globalAlpha = headA;
-  roundRect(ctx, RX, 35, 150, 26, 13, hexA(p.accent,0.15), p.accent, 1);
-  ctx.font='700 11px Segoe UI'; ctx.fillStyle=p.accent; ctx.textAlign='center';
-  ctx.fillText('REAL LIFE ANALOGY', RX+75, 52); ctx.restore();
-
-  ctx.save(); ctx.globalAlpha=headA;
-  ctx.font='700 26px Segoe UI'; ctx.fillStyle=p.accent; ctx.textAlign='left';
-  ctx.fillText(s.title, RX, 90); ctx.restore();
-
-  (s.lines||[]).forEach((line,i)=>{{
-    const la = easeOut(clamp((progress-0.2-i*0.1)*5,0,1));
-    if(la<=0) return;
-    const y = 120 + i*72;
-    ctx.save(); ctx.globalAlpha=la;
-    roundRect(ctx, RX-4, y-8, W-RX-40, 62, 8,
-      hexA(i===0?p.accent:p.secondary,0.07),
-      hexA(i===0?p.accent:p.secondary,0.25), 1);
-    ctx.font=`700 24px serif`; ctx.fillStyle=hexA(p.accent,0.3); ctx.textAlign='left';
-    ctx.fillText('"', RX+6, y+12);
-    ctx.font='13.5px Segoe UI'; ctx.fillStyle='#dde4ee';
-    wrapText(ctx, line, RX+22, y+8, W-RX-75, 19); ctx.restore();
-  }});
-}}
-
-function drawSteps(s, p, progress){{
-  const headA = easeOut(clamp(progress*4,0,1));
-  const steps = s.steps||[];
-
-  ctx.save(); ctx.globalAlpha=headA;
-  roundRect(ctx, 50, 30, 140, 26, 13, hexA(p.accent,0.15), p.accent, 1);
-  ctx.font='700 11px Segoe UI'; ctx.fillStyle=p.accent; ctx.textAlign='center';
-  ctx.fillText('STEP BY STEP', 120, 47);
-  ctx.font='700 24px Segoe UI'; ctx.fillStyle='#ffffff'; ctx.textAlign='left';
-  ctx.fillText(s.title, 50, 87); ctx.restore();
-
-  const timelineA = easeOut(clamp((progress-0.1)*4,0,1));
-  ctx.save(); ctx.globalAlpha=0.25*timelineA;
-  const grad = ctx.createLinearGradient(78,110,78,H-30);
-  grad.addColorStop(0,p.accent); grad.addColorStop(1,'transparent');
-  ctx.strokeStyle=grad; ctx.lineWidth=2; ctx.setLineDash([4,4]);
-  ctx.beginPath(); ctx.moveTo(78,110); ctx.lineTo(78,H-30); ctx.stroke();
-  ctx.setLineDash([]); ctx.restore();
-
-  steps.forEach((step,i)=>{{
-    const sp = easeOut(clamp((progress-0.15-i*0.11)*6,0,1));
-    if(sp<=0) return;
-    const y = 112 + i*64;
-    ctx.save(); ctx.globalAlpha=sp; ctx.translate(-(1-sp)*20,0);
-
-    const circGrd = ctx.createRadialGradient(78,y+14,0,78,y+14,18);
-    circGrd.addColorStop(0,hexA(p.accent,0.8)); circGrd.addColorStop(1,hexA(p.accent,0.1));
-    ctx.fillStyle=circGrd; ctx.beginPath(); ctx.arc(78,y+14,14,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle=p.accent; ctx.lineWidth=2; ctx.stroke();
-    ctx.font='700 13px Segoe UI'; ctx.fillStyle='#ffffff';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(''+(i+1),78,y+14); ctx.textBaseline='alphabetic';
-
-    roundRect(ctx, 106, y, W-160, 54, 8, hexA(p.accent,0.07), hexA(p.accent,0.2), 1.2);
-
-    ctx.font='700 13px Segoe UI'; ctx.fillStyle=p.accent; ctx.textAlign='left';
-    ctx.fillText(step.label||('Step '+(i+1)), 120, y+18);
-    ctx.font='13px Segoe UI'; ctx.fillStyle='#c9d3e0';
-    wrapText(ctx, step.body||'', 120, y+34, W-200, 18); ctx.restore();
-  }});
-}}
-
-function drawConcepts(s, p, progress){{
-  const headA = easeOut(clamp(progress*4,0,1));
-  const cards = s.cards||[];
-
-  ctx.save(); ctx.globalAlpha=headA;
-  roundRect(ctx, W/2-65, 28, 130, 26, 13, hexA(p.accent,0.15), p.accent, 1);
-  ctx.font='700 11px Segoe UI'; ctx.fillStyle=p.accent; ctx.textAlign='center';
-  ctx.fillText('KEY CONCEPTS', W/2, 45);
-  ctx.font='700 24px Segoe UI'; ctx.fillStyle='#ffffff';
-  ctx.fillText(s.title, W/2, 85); ctx.restore();
-
-  const cols=2, cardW=320, cardH=140, gapX=30, gapY=20;
-  const startX=(W-cols*cardW-(cols-1)*gapX)/2;
-  const accentColors=[p.accent,p.secondary,p.accent,p.secondary];
-
-  cards.forEach((card,i)=>{{
-    const cp = easeOut(clamp((progress-0.15-i*0.08)*5,0,1));
-    if(cp<=0) return;
-    const col=i%cols, row=Math.floor(i/cols);
-    const cx=startX+col*(cardW+gapX), cy=108+row*(cardH+gapY);
-    const ac=accentColors[i];
-
-    ctx.save(); ctx.globalAlpha=cp; ctx.translate(0,(1-cp)*15);
-    const grd=ctx.createRadialGradient(cx+cardW/2,cy+cardH/2,0,cx+cardW/2,cy+cardH/2,cardW/2);
-    grd.addColorStop(0,hexA(ac,0.12)); grd.addColorStop(1,'transparent');
-    ctx.fillStyle=grd; ctx.fillRect(cx-20,cy-20,cardW+40,cardH+40);
-
-    roundRect(ctx, cx, cy, cardW, cardH, 14, hexA(ac,0.08), ac, 1.5);
-    roundRect(ctx, cx, cy, cardW, 5, [14,14,0,0], ac, null);
-
-    const circX=cx+28, circY=cy+35;
-    ctx.fillStyle=hexA(ac,0.2); ctx.beginPath(); ctx.arc(circX,circY,16,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle=ac; ctx.lineWidth=1.5; ctx.stroke();
-    ctx.font='700 13px Segoe UI'; ctx.fillStyle=ac;
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(''+(i+1),circX,circY); ctx.textBaseline='alphabetic';
-
-    ctx.font='700 14px Segoe UI'; ctx.fillStyle='#ffffff'; ctx.textAlign='left';
-    ctx.fillText(card.title, cx+52, cy+30);
-    ctx.strokeStyle=hexA(ac,0.4); ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.moveTo(cx+52,cy+38); ctx.lineTo(cx+cardW-16,cy+38); ctx.stroke();
-    ctx.font='13px Segoe UI'; ctx.fillStyle='#b8c4d4';
-    wrapText(ctx, card.desc, cx+16, cy+58, cardW-32, 19); ctx.restore();
-  }});
-}}
-
-function drawMistakes(s, p, progress){{
-  const headA = easeOut(clamp(progress*4,0,1));
-  const items = s.items||[];
-  const red = '#ff6b6b';
-
-  ctx.save(); ctx.globalAlpha=headA;
-  roundRect(ctx, W/2-75, 28, 150, 26, 13, 'rgba(255,107,107,0.15)', red, 1);
-  ctx.font='700 11px Segoe UI'; ctx.fillStyle=red; ctx.textAlign='center';
-  ctx.fillText('⚠ COMMON MISTAKES', W/2, 45);
-  ctx.font='700 24px Segoe UI'; ctx.fillStyle='#ffffff';
-  ctx.fillText(s.title, W/2, 85); ctx.restore();
-
-  ctx.save(); ctx.globalAlpha=0.06*headA;
-  const grd=ctx.createLinearGradient(0,0,W,0);
-  grd.addColorStop(0,'transparent'); grd.addColorStop(0.5,red); grd.addColorStop(1,'transparent');
-  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H); ctx.restore();
-
-  const icons=['⚠️','❌','🚫'];
-  items.forEach((item,i)=>{{
-    const ip = easeOut(clamp((progress-0.2-i*0.12)*5,0,1));
-    if(ip<=0) return;
-    const y = 115 + i*100;
-    ctx.save(); ctx.globalAlpha=ip; ctx.translate((1-ip)*25,0);
-
-    roundRect(ctx, 50, y, W-100, 84, 12, 'rgba(255,107,107,0.06)',
-      `rgba(255,107,107,${{0.3*ip}})`, 1.5);
-
-    const grd2=ctx.createRadialGradient(82,y+42,0,82,y+42,22);
-    grd2.addColorStop(0,'rgba(255,107,107,0.3)'); grd2.addColorStop(1,'transparent');
-    ctx.fillStyle=grd2; ctx.beginPath(); ctx.arc(82,y+42,22,0,Math.PI*2); ctx.fill();
-    ctx.font='26px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(icons[i%icons.length],82,y+42); ctx.textBaseline='alphabetic';
-
-    ctx.font='700 12px Segoe UI'; ctx.fillStyle=red; ctx.textAlign='left';
-    ctx.fillText('MISTAKE '+(i+1),116,y+22);
-    ctx.font='13.5px Segoe UI'; ctx.fillStyle='#d0d8e4';
-    wrapText(ctx, item, 116, y+38, W-185, 19); ctx.restore();
-  }});
-}}
-
-function drawTakeaway(s, p, progress){{
-  const a1=easeOut(clamp(progress*4,0,1));
-  const a2=easeOut(clamp((progress-0.15)*4,0,1));
-  const a3=easeOut(clamp((progress-0.3)*4,0,1));
-  const a4=easeOut(clamp((progress-0.5)*4,0,1));
-
-  ctx.save(); ctx.globalAlpha=0.18*a1;
-  const grd=ctx.createRadialGradient(W/2,H*0.4,0,W/2,H*0.4,300);
-  grd.addColorStop(0,p.accent); grd.addColorStop(1,'transparent');
-  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H); ctx.restore();
-
-  ctx.save(); ctx.globalAlpha=0.15*a1;
-  ctx.strokeStyle=p.accent; ctx.lineWidth=1.5;
-  ctx.translate(W/2,H*0.38); ctx.rotate(t*0.3);
-  for(let i=0;i<8;i++){{
-    const angle=(i/8)*Math.PI*2;
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(angle)*80,Math.sin(angle)*80);
-    ctx.lineTo(Math.cos(angle)*110,Math.sin(angle)*110);
-    ctx.stroke();
-  }}
   ctx.restore();
+}}
 
-  ctx.save(); ctx.globalAlpha=a1;
-  ctx.font=`${{Math.round(64*a1)}}px serif`;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('⭐',W/2,H*0.28); ctx.restore();
-
-  ctx.save(); ctx.globalAlpha=a2;
-  roundRect(ctx, W/2-65, H*0.42, 130, 26, 13, hexA(p.accent,0.15), p.accent, 1);
-  ctx.font='700 11px Segoe UI'; ctx.fillStyle=p.accent; ctx.textAlign='center';
-  ctx.fillText('KEY TAKEAWAY', W/2, H*0.42+17); ctx.restore();
-
-  ctx.save(); ctx.globalAlpha=a3*0.9;
-  ctx.font='15px Segoe UI'; ctx.fillStyle='#dde4ee'; ctx.textAlign='center';
-  const bodyY=H*0.54;
-  const words=s.body.split(' ');
-  let line='', cy=bodyY;
+// ─── SPEECH BUBBLE ──────────────────────────────────────
+function drawBubble(bx,by,bw,text,p){{
+  if(!text)return;
+  ctx.font='14.5px Segoe UI';
+  const pad=16,lh=21,mw=bw-pad*2;
+  const words=text.split(' ');let lines=[],line='';
   for(let w of words){{
     const test=line+w+' ';
-    if(ctx.measureText(test).width>600&&line){{
-      ctx.fillText(line.trim(),W/2,cy); line=w+' '; cy+=24;
-    }} else line=test;
+    if(ctx.measureText(test).width>mw&&line){{lines.push(line.trim());line=w+' ';}}
+    else line=test;
   }}
-  if(line.trim()) ctx.fillText(line.trim(),W/2,cy);
-  ctx.restore();
+  if(line.trim())lines.push(line.trim());
+  const bh=lines.length*lh+pad*2,ty=by-bh-12;
 
-  ctx.save(); ctx.globalAlpha=a4;
-  const badgeW=260, badgeH=38;
-  const bx=W/2-badgeW/2, by=H*0.82;
-  const grd2=ctx.createLinearGradient(bx,by,bx+badgeW,by);
-  grd2.addColorStop(0,hexA(p.accent,0.3));
-  grd2.addColorStop(0.5,hexA(p.secondary,0.3));
-  grd2.addColorStop(1,hexA(p.accent,0.3));
-  roundRect(ctx, bx, by, badgeW, badgeH, 19, grd2, p.accent, 1.5);
-  ctx.font='700 13px Segoe UI'; ctx.fillStyle='#ffffff';
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('✓ '+s.chapter+' Complete', W/2, by+badgeH/2);
-  ctx.textBaseline='alphabetic'; ctx.restore();
-}}
+  ctx.save();ctx.globalAlpha=0.28;rr(bx+4,ty+4,bw,bh,14,'rgba(0,0,0,0.6)');ctx.restore();
+  const bg4=ctx.createLinearGradient(bx,ty,bx,ty+bh);
+  bg4.addColorStop(0,'rgba(10,10,30,0.96)');bg4.addColorStop(1,'rgba(6,6,18,0.96)');
+  rr(bx,ty,bw,bh,14,bg4,ha(p.ac,0.48),2);
+  ctx.save();ctx.globalAlpha=0.06;rr(bx+6,ty+6,bw-12,bh/2-6,10,ha('#ffffff',1));ctx.restore();
 
-let lastTime=0, slideStartTime=0, transitionAlpha=1;
+  // Tail
+  ctx.save();ctx.fillStyle='rgba(8,8,22,0.96)';ctx.strokeStyle=ha(p.ac,0.48);ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(bx+38,ty+bh);ctx.lineTo(bx+28,ty+bh+14);ctx.lineTo(bx+60,ty+bh);ctx.closePath();
+  ctx.fill();ctx.stroke();ctx.restore();
 
-function render(timestamp){{
-  const dt=(timestamp-lastTime)/1000;
-  lastTime=timestamp; t+=dt;
-  const slideProgress=clamp((timestamp-slideStartTime)/1500,0,1);
-  const s=slides[cur], p=pal(cur);
-  ctx.clearRect(0,0,W,H);
-  drawBg(p,t);
-  ctx.save(); ctx.globalAlpha=transitionAlpha;
-  switch(s.type){{
-    case 'title':     drawTitle(s,p,slideProgress); break;
-    case 'explain':   drawExplain(s,p,slideProgress); break;
-    case 'flowchart': drawFlowchart(s,p,slideProgress); break;
-    case 'analogy':   drawAnalogy(s,p,slideProgress); break;
-    case 'steps':     drawSteps(s,p,slideProgress); break;
-    case 'concepts':  drawConcepts(s,p,slideProgress); break;
-    case 'mistakes':  drawMistakes(s,p,slideProgress); break;
-    case 'takeaway':  drawTakeaway(s,p,slideProgress); break;
-  }}
-  ctx.restore();
-  animFrame=requestAnimationFrame(render);
-}}
+  ctx.font='14.5px Segoe UI';ctx.fillStyle='#e6ecf5';ctx.textAlign='left';
+  lines.forEach((l,i)=>ctx.fillText(l,bx+pad,ty+pad+15+i*lh));
 
-function goSlide(idx){{
-  cur=((idx%TOTAL)+TOTAL)%TOTAL;
-  slideStartTime=performance.now();
-  document.getElementById('ctr').textContent=(cur+1)+'/'+TOTAL;
-  const accent=pal(cur).accent;
-  document.getElementById('topfill').style.width=(((cur+1)/TOTAL)*100)+'%';
-  document.getElementById('topfill').style.background=accent;
-  document.querySelectorAll('.dot').forEach((d,i)=>{{
-    d.classList.toggle('on',i===cur);
-    d.style.background=i===cur?accent:'rgba(255,255,255,0.2)';
+  // Talking dots
+  ctx.save();ctx.textAlign='left';
+  [0,0.35,0.7].forEach((d,i)=>{{
+    ctx.globalAlpha=(0.4+0.4*Math.sin(gt*4+d))*0.7;
+    ctx.fillStyle=p.ac;ctx.beginPath();ctx.arc(bx+bw-22+i*7,ty+bh-10,3,0,Math.PI*2);ctx.fill();
   }});
-  if(playing) resetTimer();
+  ctx.restore();
 }}
 
-function nextSlide(){{ goSlide(cur+1); }}
-function prev(){{ goSlide(cur-1); }}
+// ─── SCENE CONTENT (right side) ─────────────────────────
+function drawContent(scene,p,prog){{
+  const ox=310;
+  if(scene.type==='intro'||scene.type==='story'){{
+    const a=eo(cl(prog*2.5,0,1));
+    ctx.save();ctx.globalAlpha=a;
+    ctx.font=`${{Math.round(72*eo(cl(prog*3,0,1)))}}px serif`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(scene.type==='intro'?'🤖':'💡',W*0.77,H*0.33);
+    const gd=ctx.createRadialGradient(W*0.77,H*0.33,0,W*0.77,H*0.33,80);
+    gd.addColorStop(0,ha(p.ac,0.12));gd.addColorStop(1,'transparent');
+    ctx.fillStyle=gd;ctx.fillRect(0,0,W,H);
+    ctx.font='bold 26px Segoe UI';ctx.fillStyle='#ffffff';ctx.textBaseline='alphabetic';
+    ctx.fillText(scene.type==='intro'?TOPIC:CHAPTER,W*0.77,H*0.58);
+    ctx.font='13px Segoe UI';ctx.fillStyle=p.ac;
+    ctx.fillText(scene.type==='intro'?'Your AI Teacher':'Real Life Story',W*0.77,H*0.68);
+    ctx.restore();
+
+  }}else if(scene.type==='explain'){{
+    const cp=eo(cl(prog*3,0,1));
+    const cx=ox,cy=42,cw=W-ox-28,ch=H-72;
+    ctx.save();ctx.globalAlpha=cp;
+    rr(cx,cy,cw,ch,16,ha(p.ac,0.05),ha(p.ac,0.17),1.5);
+    rr(cx,cy,cw,38,16,ha(p.ac,0.14));
+    ctx.font='bold 12px Segoe UI';ctx.fillStyle=p.ac;ctx.textAlign='center';
+    ctx.fillText((scene.highlight||'EXPLANATION').toUpperCase(),cx+cw/2,cy+23);
+    ctx.font='14px Segoe UI';ctx.fillStyle='#c9d3e0';ctx.textAlign='left';
+    const words2=scene.speech.split(' ');let line2='',ln=0,lx=cx+16,ly=cy+60;
+    for(let i=0;i<Math.floor(words2.length*cl(prog*2.2,0,1));i++){{
+      const test=line2+words2[i]+' ';
+      if(ctx.measureText(test).width>cw-32&&line2){{
+        ctx.fillText(line2.trim(),lx,ly+ln*23);line2=words2[i]+' ';ln++;
+        if(ly+ln*23>cy+ch-18)break;
+      }}else line2=test;
+    }}
+    if(line2.trim())ctx.fillText(line2.trim(),lx,ly+ln*23);
+    ctx.restore();
+
+  }}else if(scene.type==='steps'){{
+    const steps=scene.steps||[];
+    steps.forEach((step,i)=>{{
+      const sp=eo(cl((prog-i*0.14)*3,0,1));
+      if(sp<=0)return;
+      const sy2=35+i*96,sx=ox;
+      ctx.save();ctx.globalAlpha=sp;
+      rr(sx,sy2,W-sx-22,80,12,ha(p.ac,0.07),ha(p.ac,0.2),1.5);
+      ctx.beginPath();ctx.arc(sx+24,sy2+40,16,0,Math.PI*2);
+      const cg=ctx.createRadialGradient(sx+24,sy2+40,0,sx+24,sy2+40,16);
+      cg.addColorStop(0,ha(p.ac,0.4));cg.addColorStop(1,ha(p.ac,0.1));
+      ctx.fillStyle=cg;ctx.fill();ctx.strokeStyle=p.ac;ctx.lineWidth=2;ctx.stroke();
+      ctx.font='bold 12px Segoe UI';ctx.fillStyle='#ffffff';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(i+1,sx+24,sy2+40);ctx.textBaseline='alphabetic';
+      ctx.font='bold 12px Segoe UI';ctx.fillStyle=p.ac;ctx.textAlign='left';
+      ctx.fillText(step.label||`Step ${{i+1}}`,sx+48,sy2+28);
+      ctx.font='12px Segoe UI';ctx.fillStyle='#c9d3e0';
+      wt(step.body||'',sx+48,sy2+46,W-sx-72,18,2);
+      ctx.restore();
+    }});
+
+  }}else if(scene.type==='concepts'){{
+    const cards=scene.cards||[];
+    const cw=(W-ox-28)/2-8;
+    cards.forEach((card,i)=>{{
+      const cp2=eo(cl((prog-i*0.1)*3,0,1));if(cp2<=0)return;
+      const col=i%2,row=Math.floor(i/2);
+      const cx=ox+col*(cw+16),cy=38+row*145;
+      ctx.save();ctx.globalAlpha=cp2;ctx.translate(0,(1-cp2)*18);
+      const ac2=i%2===0?p.ac:p.sec;
+      rr(cx,cy,cw,128,12,ha(ac2,0.08),ha(ac2,0.28),2);
+      rr(cx,cy,cw,5,[12,12,0,0],ac2,null);
+      ctx.font=`${{Math.round(28*cp2)}}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(['💡','⚡','🔑','🎯'][i%4],cx+cw/2,cy+40);
+      ctx.font='bold 12px Segoe UI';ctx.fillStyle='#ffffff';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+      ctx.fillText(card.title,cx+cw/2,cy+72);
+      ctx.font='11px Segoe UI';ctx.fillStyle='#a8b4c4';
+      wt(card.desc,cx+10,cy+90,cw-20,17,2);
+      ctx.restore();
+    }});
+
+  }}else if(scene.type==='celebrate'){{
+    const ap=eo(cl(prog*2.2,0,1));
+    const bx=ox+10,by=55,bw2=W-ox-38,bh2=160;
+    ctx.save();ctx.globalAlpha=ap;
+    const bg5=ctx.createRadialGradient(bx+bw2/2,by+bh2/2,0,bx+bw2/2,by+bh2/2,160);
+    bg5.addColorStop(0,ha(p.ac,0.13));bg5.addColorStop(1,'transparent');
+    ctx.fillStyle=bg5;ctx.fillRect(0,0,W,H);
+    rr(bx,by,bw2,bh2,20,ha(p.ac,0.09),ha(p.ac,0.38),2.5);
+    ctx.font=`${{Math.round(52*ap)}}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('🏆',bx+bw2/2,by+58);
+    ctx.font='bold 19px Segoe UI';ctx.fillStyle='#ffffff';ctx.textBaseline='alphabetic';
+    ctx.fillText('Chapter Complete!',bx+bw2/2,by+105);
+    ctx.font='13px Segoe UI';ctx.fillStyle=p.ac;
+    ctx.fillText(CHAPTER,bx+bw2/2,by+130);
+    ctx.restore();
+  }}
+}}
+
+// ─── RENDER LOOP ────────────────────────────────────────
+function render(ts){{
+  const dt=(ts-lt)/1000;lt=ts;gt+=dt;
+  const prog=cl((ts-slideStart)/1500,0,1);
+  const scene=SCENES[cur];const p=pal();
+  charX=lerp(charX,charTX,0.05);
+  const talkT=cl((gt-slideStart/1000)*0.5,0,1)<0.95?1:0;
+
+  ctx.clearRect(0,0,W,H);
+  switch(scene.bg){{
+    case 'welcome':bgWelcome(p);break;case 'story':bgStory(p);break;
+    case 'classroom':bgClassroom(p);break;case 'technical':bgTechnical(p);break;
+    case 'celebration':bgCelebration(p);break;default:bgWelcome(p);
+  }}
+  const cp=cl((ts-slideStart-550)/2000,0,1);
+  drawContent(scene,p,cp);
+  drawARIA(charX,H*0.74,0.87,scene.pose||'explain',talkT);
+  const ba=eo(cl((ts-slideStart-280)/700,0,1));
+  ctx.save();ctx.globalAlpha=ba;
+  drawBubble(Math.max(charX-25,18),H*0.67,Math.min(W-charX+20,380),scene.speech||'',p);
+  ctx.restore();
+  if(transAlpha>0){{
+    ctx.save();ctx.globalAlpha=transAlpha;ctx.fillStyle='#06060f';ctx.fillRect(0,0,W,H);
+    transAlpha=Math.max(0,transAlpha-0.055);ctx.restore();
+  }}
+  af=requestAnimationFrame(render);
+}}
+
+// ─── CONTROLS ───────────────────────────────────────────
+function goScene(idx){{
+  cur=((idx%TOTAL)+TOTAL)%TOTAL;
+  slideStart=performance.now();lt=performance.now();transAlpha=0.75;
+  charTX=W*0.17+(SCENES[cur].pose==='point'?14:0);
+  updateUI();if(playing)resetTimer();
+}}
+function nextScene(){{goScene(cur+1);}}
+function prev(){{goScene(cur-1);}}
 function togglePlay(){{
   playing=!playing;
-  document.getElementById('pb').textContent=playing?'⏸':'▶';
-  if(playing) resetTimer(); else clearInterval(timer);
+  document.getElementById('pb').innerHTML=playing?'&#9646;&#9646;':'&#9654;';
+  if(playing)resetTimer();else clearInterval(timer);
 }}
-function resetTimer(){{ clearInterval(timer); timer=setInterval(nextSlide,DURATION); }}
-
+function resetTimer(){{
+  clearInterval(timer);
+  timer=setInterval(nextScene,SCENES[cur].duration||6000);
+}}
+function updateUI(){{
+  const p=pal();
+  const tf=document.getElementById('topfill');
+  tf.style.width=((cur+1)/TOTAL*100)+'%';tf.style.background=p.ac;
+  document.getElementById('lbl').textContent=`Scene ${{cur+1}} / ${{TOTAL}}`;
+  document.querySelectorAll('.dot').forEach((d,i)=>{{
+    d.classList.toggle('on',i===cur);
+    d.style.background=i===cur?p.ac:'rgba(255,255,255,0.2)';
+    d.style.width=i===cur?'20px':'7px';
+  }});
+}}
 function buildDots(){{
-  const el=document.getElementById('dots'); el.innerHTML='';
-  slides.forEach((_,i)=>{{
-    const d=document.createElement('div');
-    d.className='dot'+(i===0?' on':'');
-    d.onclick=()=>goSlide(i); el.appendChild(d);
+  const el=document.getElementById('dots');el.innerHTML='';
+  SCENES.forEach((_,i)=>{{
+    const d=document.createElement('div');d.className='dot'+(i===0?' on':'');
+    d.onclick=()=>goScene(i);el.appendChild(d);
   }});
 }}
 
-buildDots();
-document.getElementById('topfill').style.background=pal(0).accent;
-document.getElementById('topfill').style.width=(100/TOTAL)+'%';
-document.querySelectorAll('.dot')[0].style.background=pal(0).accent;
-slideStartTime=performance.now(); lastTime=performance.now();
-animFrame=requestAnimationFrame(render);
-resetTimer();
+buildDots();charTX=W*0.17;charX=W*0.17;
+slideStart=performance.now();lt=performance.now();
+updateUI();af=requestAnimationFrame(render);resetTimer();
 </script>
 </body></html>"""
 
-    components.html(html, height=510, scrolling=False)
+    components.html(html, height=530, scrolling=False)
