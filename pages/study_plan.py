@@ -54,12 +54,26 @@ def show_study_plan():
     plan_key = f"study_plan_{topic}_{days}_{hours}"
 
     if st.button("📅 Generate My Study Plan", key="gen_plan"):
-        if plan_key in st.session_state:
-            del st.session_state[plan_key]
-
-    if plan_key not in st.session_state:
+        # Clear any previously stored plans for this topic
+        keys_to_del = [k for k in list(st.session_state.keys()) if k.startswith("study_plan_")]
+        for k in keys_to_del:
+            del st.session_state[k]
         with st.spinner("📅 Building your personalized study plan..."):
             plan = generate_study_plan(topic, level, language, days, hours, lesson_data)
+            if not plan:
+                # Fallback: build a simple day-by-day plan from chapters
+                plan = []
+                chapters = lesson_data.get("chapters", [])
+                chapters_per_day = max(1, len(chapters) // days)
+                for d in range(1, days + 1):
+                    ch_index = (d - 1) * chapters_per_day
+                    ch = chapters[ch_index] if ch_index < len(chapters) else chapters[-1]
+                    plan.append({
+                        "day": str(d),
+                        "focus": ch["title"],
+                        "tasks": f"Read and study Chapter {ch['number']}: {ch['title']}. Take notes, review key concepts, and try to explain it in your own words.",
+                        "goal": f"Understand the core ideas of {ch['title']} in {topic}."
+                    })
             st.session_state[plan_key] = plan
 
     plan = st.session_state.get(plan_key, [])
