@@ -1,6 +1,7 @@
 import streamlit as st
 import sys
 import os
+import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.ai_utils import generate_flashcards
 import streamlit.components.v1 as components
@@ -73,7 +74,7 @@ def show_flashcards():
         return
 
     # Render interactive flashcard widget
-    cards_json = str(cards).replace("'", '"').replace('True', 'true').replace('False', 'false')
+    cards_json = json.dumps(cards)
 
     html = f"""
     <style>
