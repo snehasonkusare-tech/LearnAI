@@ -26,7 +26,6 @@ def show_home():
     # Main input form
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<div class="card-title">🚀 Start Learning</div>', unsafe_allow_html=True)
         st.markdown('<div class="card-text" style="margin-bottom:1.5rem;">Enter any technology or concept and get a complete AI-generated lesson — no searching required.</div>', unsafe_allow_html=True)
 
@@ -92,7 +91,6 @@ def show_home():
             else:
                 st.error("Please enter a topic to learn!")
 
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # How it works section
     st.markdown("<br><br>", unsafe_allow_html=True)
